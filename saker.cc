@@ -55,11 +55,12 @@ bool g_cont = false;
 #define DEFAULT_MAC_CNT (-1)
 #define DEFAULT_DELAY (10)
 
-int  pkt_cnt = DEFAULT_PKT_CNT;
-int  mac_cnt = DEFAULT_MAC_CNT;
-int  time_delay = DEFAULT_DELAY;
-int  src_cnt;
-int  dst_cnt;
+int pkt_cnt = DEFAULT_PKT_CNT;
+int mac_cnt = DEFAULT_MAC_CNT;
+int time_delay = DEFAULT_DELAY;
+int src_cnt;
+int dst_cnt;
+int pkt_grb = 0; // number of packets actually grabbed
 
 void
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
@@ -68,6 +69,8 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     int  i;
     map<string, int>::iterator mit;
 
+    pkt_grb++;
+    
     for (i = 0; i < 6; i++)
         sprintf(buf+3*i, "%02x:", pkt[i]);
     buf[17] = '\0';
@@ -114,11 +117,11 @@ public:
 template<class T> class print
 {
     ostream &os;
-    int pkt_cnt;
-    int mac_cnt;
+    int _pkt_cnt;
+    int _mac_cnt;
     bool g_mac_cnt;
 public:
-    print(ostream &out, int pc, int mc) : os(out), pkt_cnt(pc), mac_cnt(mc) { 
+    print(ostream &out, int pc, int mc) : os(out), _pkt_cnt(pc), _mac_cnt(mc) { 
 	    if (mc != DEFAULT_MAC_CNT)
 		    g_mac_cnt = true;
 	    else
@@ -137,9 +140,9 @@ public:
             }
         }
         if (g_mac_cnt) {
-                mac_cnt--;
-                if (mac_cnt < 0)
-                        return;
+                _mac_cnt--;
+                if (_mac_cnt < 0)
+                        return; // shouldn't be asserted?
         }
 
         os << "\t" << x.first << "\t" << x.second;
@@ -147,7 +150,7 @@ public:
         if (g_percent)
         {
             char s[10];
-            sprintf(s, "%4.1f", (static_cast<double>(x.first)/pkt_cnt)*100.0);
+            sprintf(s, "%4.1f", (static_cast<double>(x.first)/_pkt_cnt)*100.0);
             cout << "\t" << s << "%";
         }
 
@@ -185,11 +188,12 @@ void report(void)
     multimap<int, string> dst_score; 
 
     cout << endl;
+    cout << "Total packets: " << pkt_grb << endl;
 
     if (!g_only_dst)
     {
 		cout << "SRC stats:" << endl;
-		src_cnt = pkt_cnt;
+		src_cnt = pkt_grb;
 
 		// we have first to copy all stats from src, which is ordered by MAC to src_score
 		// which is ordered by count, making possible printing stats ordered by count
@@ -208,7 +212,7 @@ void report(void)
     if (!g_only_src)
     {
 		cout << "DST stats:" << endl;
-		dst_cnt = pkt_cnt;
+		dst_cnt = pkt_grb;
 
 		// same for dst
 		transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
@@ -229,6 +233,12 @@ void alarm_report(int sig)
 	alarm(time_delay);
 }
 
+void sig_handler(int sig)
+{
+	cerr << endl << "saker: shutdown" << endl;
+	exit(127);	
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -242,6 +252,9 @@ main(int argc, char *argv[])
     rev[strlen(rev)-2] = '\0';
     char *revp = rev + 11; // skip prefix
     cerr << "saker v" << revp << endl;
+
+    signal(SIGINT, sig_handler);
+    signal(SIGTERM, sig_handler);
 
     while ((opt = getopt (argc, argv, "i:n:m:t:claphvrsdVD")) != -1)
     {

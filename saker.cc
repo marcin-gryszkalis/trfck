@@ -51,6 +51,8 @@ bool g_only_dst = false;
 bool g_only_src = false;
 bool g_cont = false;
 
+char *pcap_dev = NULL;
+
 #define DEFAULT_PKT_CNT (100)
 #define DEFAULT_MAC_CNT (-1)
 #define DEFAULT_DELAY (10)
@@ -146,8 +148,8 @@ public:
                         return; // shouldn't be asserted?
         }
 
-		char f[256];
-		sprintf(f, "%16d", x.first);
+	char f[80];
+	sprintf(f, "%12d", x.first);
         os << "\t" << f << "\t" << x.second;
 
         if (g_percent)
@@ -195,7 +197,7 @@ void report(void)
     long pps = pkt_grb / (delta ? delta : 1);
     
     cout << endl;
-    cout << "Interface " << dev_pcap << endl;
+    cout << "Interface: " << pcap_dev << endl;
     cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
 
     if (!g_only_dst)
@@ -250,7 +252,6 @@ void sig_handler(int sig)
 int
 main(int argc, char *argv[])
 {
-    char           *pcap_dev = NULL;
     bpf_u_int32     net, mask;
     char            errbuff[1024];
     int             opt;

@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <net/if_dl.h>
 #include <signal.h>
+#include <time.h>
 
 // C++ includes
 #include <string>
@@ -61,6 +62,7 @@ int time_delay = DEFAULT_DELAY;
 int src_cnt;
 int dst_cnt;
 int pkt_grb = 0; // number of packets actually grabbed
+int time_start = 0;
 
 void
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
@@ -187,8 +189,12 @@ void report(void)
 // same for dst addresses 
     multimap<int, string> dst_score; 
 
+    // count the packets-per-second
+    long delta =  time(NULL) - time_start;
+    long pps = pkt_grb / (delta ? delta : 1);
+    
     cout << endl;
-    cout << "Total packets: " << pkt_grb << endl;
+    cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
 
     if (!g_only_dst)
     {
@@ -247,6 +253,8 @@ main(int argc, char *argv[])
     char            errbuff[1024];
     int             opt;
     bool            usage = false; // show usage
+
+    time_start = time(NULL);
 
     char rev[255] = "$Revision$";
     rev[strlen(rev)-2] = '\0';
@@ -352,7 +360,7 @@ main(int argc, char *argv[])
 			<< "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] -i <if>" << endl
             << "\t-i <if>\t\tnetwork interface" << endl
 			<< "\t-h\t\tshow this info" << endl
-            << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ")" << endl
+            << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ", -1 for unlimited)" << endl
             << "\t-a\t\tascending sort (default descending)" << endl
             << "\t-m num\t\tnumber of MACs to display in summary (all by default)" << endl
             << "\t-p\t\tshow percentage" << endl

@@ -376,8 +376,9 @@ main(int argc, char *argv[])
         exit(1);
     }
 
+    cerr << "Listening on: " << pcap_dev << endl;
 
-// get own mac's
+    // get own mac's
 
     struct ifaddrs *ifap, *ifaphead;
     int rtnerr;

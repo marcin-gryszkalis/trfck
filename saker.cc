@@ -73,7 +73,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     pkt_grb++;
     
     for (i = 0; i < 6; i++)
-        sprintf(buf+3*i, "%02x:", pkt[i]);
+        sprintf(buf+3*i, "%02x:", pkt[i + 6]);
     buf[17] = '\0';
 
     string s1(buf);
@@ -84,7 +84,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
         ++(mit -> second);
 
     for (i = 0; i < 6; i++)
-        sprintf(buf+3*i, "%02x:", pkt[i + 6]);
+        sprintf(buf+3*i, "%02x:", pkt[i]);
     buf[17] = '\0';
 
     string s2(buf);
@@ -146,7 +146,9 @@ public:
                         return; // shouldn't be asserted?
         }
 
-        os << "\t" << x.first << "\t" << x.second;
+		char f[256];
+		sprintf(f, "%16d", x.first);
+        os << "\t" << f << "\t" << x.second;
 
         if (g_percent)
         {
@@ -193,6 +195,7 @@ void report(void)
     long pps = pkt_grb / (delta ? delta : 1);
     
     cout << endl;
+    cout << "Interface " << dev_pcap << endl;
     cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
 
     if (!g_only_dst)

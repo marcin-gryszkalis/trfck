@@ -108,9 +108,15 @@ template<class T> class print
 {
     ostream &os;
     int pkt_cnt;
-
+    int mac_cnt;
+    bool g_mac_cnt;
 public:
-    print(ostream &out, int pc) : os(out), pkt_cnt(pc) {}
+    print(ostream &out, int pc, int mc) : os(out), pkt_cnt(pc), mac_cnt(mc) { 
+	    if (mc != DEFAULT_MAC_CNT)
+		    g_mac_cnt = true;
+	    else
+		    g_mac_cnt = false;
+    }
 
     void operator() (T x)
     {
@@ -122,6 +128,11 @@ public:
                     cout << "DEBUG: erased: " << x.second << endl;
                 return;
             }
+        }
+        if (g_mac_cnt) {
+                mac_cnt--;
+                if (mac_cnt < 0)
+                        return;
         }
 
         os << "\t" << x.first << "\t" << x.second;
@@ -166,12 +177,13 @@ main(int argc, char *argv[])
     int             opt;
     bool            usage = false; // show usage
 
-    char *rev = "$Revision$";
+    char rev[255] = "$Revision$";
     size_t revl = strlen(rev);
-    // tu sie robi 'bus error', ale dlaczego????
-    //  rev[revl-2] = '\0';
-    rev += 11; // skip prefix
-    cerr << "Saker v" << rev << endl;
+    char * revp = rev;
+    // juz sie nie robi ''bus error''
+    rev[revl-2] = '\0';
+    revp += 11; // skip prefix
+    cerr << "Saker v" << revp << endl;
 
     while ((opt = getopt (argc, argv, "i:n:m:laphvrd")) != -1)
     {
@@ -215,7 +227,7 @@ main(int argc, char *argv[])
         }
     }
 
-    if (pcap_dev == NULL)
+    if (usage == false && pcap_dev == NULL)
     {
         cerr << "Error: Interface not specified." << endl;
         usage = true;
@@ -223,8 +235,9 @@ main(int argc, char *argv[])
 
     if (usage)
     {
-        cerr << "Usage: saker [-aprmvd -n num -m num] -i <if>" << endl
+        cerr << "Usage: saker [-aprmvdh -n num -m num] -i <if>" << endl
             << "\t-i <if>\t\tnetwork interface" << endl
+	    << "\t-h\t\tshow this info" << endl
             << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ")" << endl
             << "\t-a\t\tascending sort (default descending)" << endl
             << "\t-m num\t\tnumber of MACs to display in summary (all by default)" << endl
@@ -312,9 +325,9 @@ main(int argc, char *argv[])
 
     // and now we simply print stats by count :)
     if (g_ascend)
-        for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt));
+        for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
     else
-        for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt));
+        for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
 
     cout << "DST stats:" << endl;
     dst_cnt = pkt_cnt;
@@ -325,9 +338,9 @@ main(int argc, char *argv[])
     if (g_remote)
         for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
     if (g_ascend)
-        for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt));
+        for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
     else
-        for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt));
+        for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
 
     return 0;
 }

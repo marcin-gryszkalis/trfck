@@ -14,6 +14,7 @@
 // C++ includes
 #include <string>
 #include <iostream>
+#include <set>
 #include <map>
 #include <algorithm>
 #include <iterator>
@@ -28,10 +29,11 @@ multimap<int, string> src_score; 	// container that keeps pairs (MAC, count)
 					// ordered by count of packets
 multimap<int, string> dst_score;	// same for dst addresses
 
-map<string, bool> own; // keeps list of own macs (for -r handling) 
+set<string> ownmacs; // keeps list of own macs (for -r handling) 
 
 bool g_verbose = false;
 bool g_remote = false;
+bool g_debug = false;
 
 void 
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
@@ -67,7 +69,15 @@ template<class T> class print {	// utility for printing pairs to output stream
 	ostream &os;
 public:
 	print(ostream &out) : os(out) {}
-	void operator() (T x) { os << x.first << " " << x.second << endl; }
+	void operator() (T x) {
+		if (g_remote)
+			if (ownmacs.lower_bound(x.second) != ownmacs.end()) {
+				if (g_debug)
+					cout << "DEBUG: erased: " << x.second << endl;
+				return;
+			}
+		os << x.first << " " << x.second << endl; 
+	}
 };
 
 template <class T, class S> class revert {  // utility for reverting pairs
@@ -92,7 +102,7 @@ main(int argc, char *argv[])
 
 	cerr << "Saker $Revision$"<< endl;
 
- 	 while ((opt = getopt (argc, argv, "i:n:hvr")) != -1)
+ 	 while ((opt = getopt (argc, argv, "i:n:hvrd")) != -1)
     	{
       switch (opt)
         {
@@ -112,6 +122,9 @@ main(int argc, char *argv[])
 	case 'r':	
 		g_remote = true;
 		break;
+	case 'd':
+		g_debug = true;
+		break;
         default:
           cerr << "Error: Unknown command line option." << endl;
 	  usage = true;
@@ -130,8 +143,9 @@ main(int argc, char *argv[])
 		cerr << "Usage: saker -i <if> [-n num] [-v]" << endl
 			<< "\t-i <if>\t\tnetwork interface" << endl
 			<< "\t-n num\t\tnumber of packets to capture" << endl
-			<< "\t-r\t\tcount only remote end" << endl
-			<< "\t-v\t\toptput each packet" << endl;
+			<< "\t-r\t\tcount only remote end (exclude my MACs)" << endl
+			<< "\t-v\t\tbe verbose (e.g. output each packet)" << endl
+			<< "\t-d\t\tenable debug output (you are not supposed to understand it)" << endl;
 		exit(1);
 	}
 
@@ -151,6 +165,8 @@ main(int argc, char *argv[])
     return 1;
   }
 
+  if (g_verbose)
+	  cout << "Own MAC adresses:" << endl;
   for (ifap = ifaphead; ifap; ifap = ifap->ifa_next) 
   {
     if (ifap->ifa_addr->sa_family == AF_LINK) {
@@ -161,16 +177,23 @@ main(int argc, char *argv[])
         int i;
 
 //        printf ("%s:", ifap->ifa_name); device name
-        for (i = 0; i < alen; i++, ap++)
-          sprintf(ownmac+i*3,"%c%02x", i > 0 ? ':' : ' ', 0xff&*ap);
-
-	cout << ownmac << endl;
-
-	// JANEK: own.put(ownmac, true);
+        for (i = 0; i < alen; i++, ap++) {
+		if (i > 0)
+			sprintf(ownmac+2+(i-1)*3,"%c%02x", ':' , 0xff&*ap);
+		else
+          		sprintf(ownmac+i*3,"%02x", 0xff&*ap);
+	}
+	if (g_verbose)
+		cout << ownmac << endl;
+	string ownmacstr(ownmac);
+	ownmacs.insert(ownmacstr);
       }
     }
   }
 
+  if (g_debug)
+	  copy(ownmacs.begin(), ownmacs.end(), ostream_iterator<string>(cout, "!\n"));
+  
   freeifaddrs(ifaphead);
     
  

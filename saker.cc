@@ -2,6 +2,7 @@
 // system and C includes
 #include <pcap.h>
 #include <cstdio>
+#include </usr/local/include/getopt.h>
 
 // C++ includes
 #include <string>
@@ -20,6 +21,8 @@ multimap<int, string> src_score; 	// container that keeps pairs (MAC, count)
 					// ordered by count of packets
 multimap<int, string> dst_score;	// same for dst addresses
 
+bool g_verbose = false;
+
 void 
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 {
@@ -35,8 +38,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 		src.insert(make_pair(s1, 1));
 	else			// found, increase count by 1
 		++(mit -> second);
-	cout << s1;
-	cout << " ->> ";
+
 	for (i = 0; i < 6; i++)
 		sprintf(buf+3*i, "%02x:", pkt[i + 6]);
 	buf[17] = '\0';
@@ -46,8 +48,9 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
                 dst.insert(make_pair(s2, 1));
         else
                 ++(mit -> second);
-
-	cout << s2 << endl;
+	
+	if (g_verbose)
+		cout << s1 << " ->> " << s2 << endl;
 }
 
 template<class T> class print {	// utility for printing pairs to output stream
@@ -68,17 +71,66 @@ public:
 };
 
 int 
-main(void)
+main(int argc, char *argv[])
 {
 	int             pkt_cnt = 100;
-	char           *pcap_dev = "em2";
+	char           *pcap_dev = NULL;
 	bpf_u_int32     net, mask;
 	char            errbuff[1024];
+	int 		opt;
+	bool		usage = false; // show usage
+
+	cerr << "Saker $Rev$"<< endl;
+
+ 	 while ((opt = getopt (argc, argv, "i:n:hv")) != -1)
+    	{
+      switch (opt)
+        {
+        case 'i':
+          	pcap_dev = (char *) strdup (optarg);
+          break;
+
+	case 'n':
+		pkt_cnt = atoi(optarg);
+		break;
+	case 'h':
+		usage = true;
+		break;
+	case 'v':
+		g_verbose = true;
+		break;
+        default:
+          cerr << "Error: Unknown command line option." << endl;
+	  usage = true;
+          break;
+        }
+    }
+	
+	if (pcap_dev == NULL)
+	{
+		cerr << "Error: Interface not specified." << endl;
+		usage = true;
+	}
+
+	if (usage)
+	{
+		cerr << "Usage: saker -i <if> [-n num] [-v]" << endl
+			<< "\t-i <if>\t\tnetwork interface" << endl
+			<< "\t-n num\t\tnumber of packets to capture" << endl
+			<< "\t-v\t\toptput each packet" << endl;
+		exit(1);
+	}
 
 	int             pcap_net = pcap_lookupnet(pcap_dev, &net, &mask, errbuff);
+	
 	pcap_t         *pcap_desc = pcap_open_live(pcap_dev, 100, 1, 1000, errbuff);
-	perror("pcap_open_live");
+	if (pcap_desc == NULL) { perror("pcap_open_live"); exit(1); }
+	
+
+	// do the capture
 	pcap_loop(pcap_desc, pkt_cnt, h, NULL);
+
+
 	cout << "SRC stats:" << endl;
 	// we have first to copy all stats from src, which is ordered by MAC to src_score which is ordered by count, making possible printing stats ordered by count
 	transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());

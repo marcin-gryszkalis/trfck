@@ -38,6 +38,8 @@ bool g_debug = false;
 bool g_ascend = false;
 bool g_percent = false;
 int  pkt_cnt = 100;
+int  src_cnt;
+int  dst_cnt;
 	
 void 
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
@@ -69,13 +71,27 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 		cout << s1 << " ->> " << s2 << endl;
 }
 
+template<class T> class uncount {
+	int* cnt_var;
+public:
+	uncount(int* cv) : cnt_var(cv) {}
+	void operator() (T x) {
+		if (ownmacs.find(x.second) != ownmacs.end()) {
+			*cnt_var = *cnt_var - x.first;
+			if (g_debug)
+				cout << "DEBUG uncount: " << x.first << " " << *cnt_var << endl;
+		}
+	}
+};
+
 template<class T> class print {	// utility for printing pairs to output stream
 	ostream &os;
+	int pkt_cnt;
 public:
-	print(ostream &out) : os(out) {}
+	print(ostream &out, int pc) : os(out), pkt_cnt(pc) {}
 	void operator() (T x) {
 		if (g_remote)
-			if (ownmacs.lower_bound(x.second) != ownmacs.end()) {
+			if (ownmacs.find(x.second) != ownmacs.end()) {
 				if (g_debug)
 					cout << "DEBUG: erased: " << x.second << endl;
 				return;
@@ -87,7 +103,7 @@ public:
 			cout << "\t" << s << "%";
 		}	
 		if (g_mark)
-                        if (ownmacs.lower_bound(x.second) != ownmacs.end())
+                        if (ownmacs.find(x.second) != ownmacs.end())
                                 cout << " *";
 	        cout << endl; 
 	}
@@ -232,20 +248,30 @@ main(int argc, char *argv[])
 	// do the capture
 	pcap_loop(pcap_desc, pkt_cnt, h, NULL);
 
-
+/*******************************
+ * begin of the report section *
+ *******************************/
+	
 	cout << "SRC stats:" << endl;
+	src_cnt = pkt_cnt;
 	// we have first to copy all stats from src, which is ordered by MAC to src_score which is ordered by count, making possible printing stats ordered by count
 	transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
+	if (g_remote)
+		for_each(src_score.begin(), src_score.end(), uncount<pair<int, string> >(&src_cnt));
 	// and now we simply print stats by count :)
 	if (g_ascend)
-		for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout));
+		for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt));
 	else
-		for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout));
+		for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt));
 	cout << "DST stats:" << endl;
+	dst_cnt = pkt_cnt;
 	// same for dst
         transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
+        if (g_remote)
+                for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt))
+;
 	if (g_ascend)
-		for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout));
+		for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt));
 	else
-		for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout));
+		for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt));
 }

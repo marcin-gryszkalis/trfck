@@ -47,9 +47,11 @@ bool g_ascend = false;
 bool g_percent = false;
 bool g_only_dst = false;
 bool g_only_src = false;
+bool g_cont = false;
 
 #define DEFAULT_PKT_CNT (100)
 #define DEFAULT_MAC_CNT (-1)
+#define DEFAULT_DELAY (10)
 
 int  pkt_cnt = DEFAULT_PKT_CNT;
 int  mac_cnt = DEFAULT_MAC_CNT;
@@ -170,6 +172,51 @@ public:
 };
 
 
+void alarm_report(int sig)
+{
+	report();
+	alarm(time_delay);
+}
+
+void report(void)
+{
+    if (!g_only_dst)
+    {
+		cout << "SRC stats:" << endl;
+		src_cnt = pkt_cnt;
+
+		// we have first to copy all stats from src, which is ordered by MAC to src_score
+		// which is ordered by count, making possible printing stats ordered by count
+		transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
+
+		if (g_remote)
+			for_each(src_score.begin(), src_score.end(), uncount<pair<int, string> >(&src_cnt));
+
+		// and now we simply print stats by count :)
+		if (g_ascend)
+			for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+		else
+			for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+    }
+
+    if (!g_only_src)
+    {
+		cout << "DST stats:" << endl;
+		dst_cnt = pkt_cnt;
+
+		// same for dst
+		transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
+
+		if (g_remote)
+			for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
+		
+		if (g_ascend)
+			for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
+		else
+			for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
+    }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -182,9 +229,9 @@ main(int argc, char *argv[])
     char rev[255] = "$Revision$";
     rev[strlen(rev)] = '\0';
     char *revp = rev + 11; // skip prefix
-    cerr << "Saker v" << revp << endl;
+    cerr << "saker v" << revp << endl;
 
-    while ((opt = getopt (argc, argv, "i:n:m:laphvrsdVD")) != -1)
+    while ((opt = getopt (argc, argv, "i:n:m:t:claphvrsdVD")) != -1)
     {
         switch (opt)
         {
@@ -200,6 +247,12 @@ main(int argc, char *argv[])
             mac_cnt = atoi(optarg);
             break;
         
+		case 't':
+            time_delay = atoi(optarg);
+			if (time_delay < 1)
+				time_delay = 1;
+            break;
+
 		case 'a':
             g_ascend = true;
             break;
@@ -224,6 +277,10 @@ main(int argc, char *argv[])
             g_mark = true;
             break;
 		
+		case 'c':
+            g_cont = true;
+            break;
+
 		case 'd':
 			g_only_dst = true;
 			if (g_only_src)
@@ -267,7 +324,7 @@ main(int argc, char *argv[])
     if (usage)
     {
         cerr << endl 
-			<< "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] -i <if>" << endl
+			<< "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] -i <if>" << endl
             << "\t-i <if>\t\tnetwork interface" << endl
 			<< "\t-h\t\tshow this info" << endl
             << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ")" << endl
@@ -278,6 +335,8 @@ main(int argc, char *argv[])
             << "\t-l\t\tmark local MACs with asterisk (see also -r)" << endl
             << "\t-s\t\tshow only source stats" << endl
             << "\t-d\t\tshow only destination stats" << endl
+            << "\t-c\t\tcontinuous mode" << endl
+            << "\t-t\t\ttime delay for continuous mode in seconds (default "<< DEFAULT_DELAY << ")" << endl
             << "\t-v\t\tbe verbose (e.g. output each packet)" << endl
             << "\t-V\t\tprint version and exit" << endl
             << "\t-D\t\tenable debug output (you are not supposed to understand it)" << endl;
@@ -343,46 +402,14 @@ main(int argc, char *argv[])
     pcap_t *pcap_desc = pcap_open_live(pcap_dev, 100, 1, 1000, errbuff);
     if (pcap_desc == NULL) { perror("pcap_open_live"); exit(3); }
 
-    // do the capture
-    pcap_loop(pcap_desc, pkt_cnt, h, NULL);
+	if (g_cont)
+	{
+		signal(SIGALRM, alarm_report);
+		alarm(time_delay);
+	}
 
-    // report section
-    
-    if (!g_only_dst)
-    {
-		cout << "SRC stats:" << endl;
-		src_cnt = pkt_cnt;
-
-		// we have first to copy all stats from src, which is ordered by MAC to src_score
-		// which is ordered by count, making possible printing stats ordered by count
-		transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
-
-		if (g_remote)
-			for_each(src_score.begin(), src_score.end(), uncount<pair<int, string> >(&src_cnt));
-
-		// and now we simply print stats by count :)
-		if (g_ascend)
-			for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
-		else
-			for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
-    }
-
-    if (!g_only_src)
-    {
-		cout << "DST stats:" << endl;
-		dst_cnt = pkt_cnt;
-
-		// same for dst
-		transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
-
-		if (g_remote)
-			for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
-		
-		if (g_ascend)
-			for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
-		else
-			for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
-    }
+	pcap_loop(pcap_desc, pkt_cnt, h, NULL);
+	report();   
 
     return 0;
 }

@@ -47,6 +47,7 @@ bool g_ascend = false;
 bool g_percent = false;
 bool g_only_dst = false;
 bool g_only_src = false;
+
 #define DEFAULT_PKT_CNT (100)
 #define DEFAULT_MAC_CNT (-1)
 
@@ -193,53 +194,66 @@ main(int argc, char *argv[])
         case 'i':
             pcap_dev = (char *) strdup (optarg);
             break;
-        case 'n':
+        
+		case 'n':
             pkt_cnt = atoi(optarg);
             break;
-        case 'm':
+        
+		case 'm':
             mac_cnt = atoi(optarg);
             break;
-        case 'a':
+        
+		case 'a':
             g_ascend = true;
             break;
-        case 'p':
+        
+		case 'p':
             g_percent = true;
             break;
-        case 'h':
+        
+		case 'h':
             usage = true;
             break;
-        case 'v':
+        
+		case 'v':
             g_verbose = true;
             break;
-        case 'r':
+        
+		case 'r':
             g_remote = true;
             break;
-        case 'l':
+        
+		case 'l':
             g_mark = true;
             break;
-	case 'd':
-	    g_only_dst = true;
-	    if (g_only_src)
-	    {
-		cerr << "Error: You cannot have both -d and -s." << endl;
-		usage = true;
-	    }
-    	    break;
-	case 's':
-	    g_only_src = true;
-	    if (g_only_dst)
-	    {
-		cerr << "Error: You cannot have both -d and -s." << endl;
-		usage = true;
-	    }
-    	    break;
-        case 'V':
-	    exit(0);
+		
+		case 'd':
+			g_only_dst = true;
+			if (g_only_src)
+			{
+				cerr << "Error: You cannot have both -d and -s." << endl;
+				usage = true;
+			}
+			break;
+		
+		case 's':
+			g_only_src = true;
+			if (g_only_dst)
+			{
+				cerr << "Error: You cannot have both -d and -s." << endl;
+				usage = true;
+			}
+			break;
+        
+		case 'V':
+			exit(0);
             break;
-        case 'D':
+        
+		case 'D':
             g_debug = true;
             break;
-        case '?':
+
+		case '?':
         default:
             cerr << "Error: Unknown command line option." << endl;
             usage = true;
@@ -338,38 +352,38 @@ main(int argc, char *argv[])
     
     if (!g_only_dst)
     {
-    cout << "SRC stats:" << endl;
-    src_cnt = pkt_cnt;
+		cout << "SRC stats:" << endl;
+		src_cnt = pkt_cnt;
 
-    // we have first to copy all stats from src, which is ordered by MAC to src_score
-    // which is ordered by count, making possible printing stats ordered by count
-    transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
+		// we have first to copy all stats from src, which is ordered by MAC to src_score
+		// which is ordered by count, making possible printing stats ordered by count
+		transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
 
-    if (g_remote)
-        for_each(src_score.begin(), src_score.end(), uncount<pair<int, string> >(&src_cnt));
+		if (g_remote)
+			for_each(src_score.begin(), src_score.end(), uncount<pair<int, string> >(&src_cnt));
 
-    // and now we simply print stats by count :)
-    if (g_ascend)
-        for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
-    else
-        for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+		// and now we simply print stats by count :)
+		if (g_ascend)
+			for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+		else
+			for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
     }
 
     if (!g_only_src)
     {
-    cout << "DST stats:" << endl;
-    dst_cnt = pkt_cnt;
+		cout << "DST stats:" << endl;
+		dst_cnt = pkt_cnt;
 
-    // same for dst
-    transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
+		// same for dst
+		transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
 
-    if (g_remote)
-        for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
-    
-    if (g_ascend)
-        for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
-    else
-        for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
+		if (g_remote)
+			for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
+		
+		if (g_ascend)
+			for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
+		else
+			for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
     }
 
     return 0;

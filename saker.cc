@@ -45,7 +45,8 @@ bool g_mark = false;
 bool g_debug = false;
 bool g_ascend = false;
 bool g_percent = false;
-
+bool g_only_dst = false;
+bool g_only_src = false;
 #define DEFAULT_PKT_CNT (100)
 #define DEFAULT_MAC_CNT (-1)
 
@@ -185,7 +186,7 @@ main(int argc, char *argv[])
     revp += 11; // skip prefix
     cerr << "Saker v" << revp << endl;
 
-    while ((opt = getopt (argc, argv, "i:n:m:laphvrd")) != -1)
+    while ((opt = getopt (argc, argv, "i:n:m:laphvrsdVD")) != -1)
     {
         switch (opt)
         {
@@ -216,7 +217,26 @@ main(int argc, char *argv[])
         case 'l':
             g_mark = true;
             break;
-        case 'd':
+	case 'd':
+	    g_only_dst = true;
+	    if (g_only_src)
+	    {
+		cerr << "Error: You cannot have both -d and -s." << endl;
+		usage = true;
+	    }
+    	    break;
+	case 's':
+	    g_only_src = true;
+	    if (g_only_dst)
+	    {
+		cerr << "Error: You cannot have both -d and -s." << endl;
+		usage = true;
+	    }
+    	    break;
+        case 'V':
+	    exit(0);
+            break;
+        case 'D':
             g_debug = true;
             break;
         case '?':
@@ -235,7 +255,7 @@ main(int argc, char *argv[])
 
     if (usage)
     {
-        cerr << "Usage: saker [-aprmvdh -n num -m num] -i <if>" << endl
+        cerr << "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] -i <if>" << endl
             << "\t-i <if>\t\tnetwork interface" << endl
 	    << "\t-h\t\tshow this info" << endl
             << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ")" << endl
@@ -244,8 +264,11 @@ main(int argc, char *argv[])
             << "\t-p\t\tshow percentage" << endl
             << "\t-r\t\tcount only remote ends (exclude my MACs)" << endl
             << "\t-l\t\tmark local MACs with asterisk (see also -r)" << endl
+            << "\t-s\t\tshow only source stats" << endl
+            << "\t-d\t\tshow only destination stats" << endl
             << "\t-v\t\tbe verbose (e.g. output each packet)" << endl
-            << "\t-d\t\tenable debug output (you are not supposed to understand it)" << endl;
+            << "\t-V\t\tprint version and exit" << endl
+            << "\t-D\t\tenable debug output (you are not supposed to understand it)" << endl;
         exit(1);
     }
 
@@ -312,7 +335,9 @@ main(int argc, char *argv[])
     pcap_loop(pcap_desc, pkt_cnt, h, NULL);
 
     // report section
-
+    
+    if (!g_only_dst)
+    {
     cout << "SRC stats:" << endl;
     src_cnt = pkt_cnt;
 
@@ -328,7 +353,10 @@ main(int argc, char *argv[])
         for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
     else
         for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+    }
 
+    if (!g_only_src)
+    {
     cout << "DST stats:" << endl;
     dst_cnt = pkt_cnt;
 
@@ -337,10 +365,12 @@ main(int argc, char *argv[])
 
     if (g_remote)
         for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
+    
     if (g_ascend)
         for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
     else
         for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
+    }
 
     return 0;
 }

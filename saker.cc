@@ -180,12 +180,9 @@ main(int argc, char *argv[])
     bool            usage = false; // show usage
 
     char rev[255] = "$Revision$";
-    size_t revl = strlen(rev);
-    char * revp = rev;
-    // juz sie nie robi ''bus error''
-    rev[revl-2] = '\0';
-    revp += 11; // skip prefix
-    cerr << "Saker v" << revp << endl;
+    rev[strlen(rev)] = '\0';
+    rev += 11; // skip prefix
+    cerr << "Saker v" << rev << endl;
 
     while ((opt = getopt (argc, argv, "i:n:m:laphvrsdVD")) != -1)
     {
@@ -269,9 +266,10 @@ main(int argc, char *argv[])
 
     if (usage)
     {
-        cerr << "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] -i <if>" << endl
+        cerr << endl 
+			<< "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] -i <if>" << endl
             << "\t-i <if>\t\tnetwork interface" << endl
-	    << "\t-h\t\tshow this info" << endl
+			<< "\t-h\t\tshow this info" << endl
             << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ")" << endl
             << "\t-a\t\tascending sort (default descending)" << endl
             << "\t-m num\t\tnumber of MACs to display in summary (all by default)" << endl

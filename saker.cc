@@ -33,8 +33,12 @@ set<string> ownmacs; // keeps list of own macs (for -r handling)
 
 bool g_verbose = false;
 bool g_remote = false;
+bool g_mark = false;
 bool g_debug = false;
-
+bool g_ascend = false;
+bool g_percent = false;
+int  pkt_cnt = 100;
+	
 void 
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 {
@@ -76,7 +80,16 @@ public:
 					cout << "DEBUG: erased: " << x.second << endl;
 				return;
 			}
-		os << x.first << " " << x.second << endl; 
+		os << "\t" << x.first << "\t" << x.second;
+		if (g_percent) {
+			char s[10];
+			sprintf(s, "%4.1f", (static_cast<double>(x.first)/pkt_cnt)*100.0);
+			cout << "\t" << s << "%";
+		}	
+		if (g_mark)
+                        if (ownmacs.lower_bound(x.second) != ownmacs.end())
+                                cout << " *";
+	        cout << endl; 
 	}
 };
 
@@ -93,7 +106,7 @@ public:
 int 
 main(int argc, char *argv[])
 {
-	int             pkt_cnt = 100;
+//	int             pkt_cnt = 100; // obecnie w zasiegu globalnym (g_percent)!
 	char           *pcap_dev = NULL;
 	bpf_u_int32     net, mask;
 	char            errbuff[1024];
@@ -102,7 +115,7 @@ main(int argc, char *argv[])
 
 	cerr << "Saker $Revision$"<< endl;
 
- 	 while ((opt = getopt (argc, argv, "i:n:hvrd")) != -1)
+ 	 while ((opt = getopt (argc, argv, "i:n:aphvrmd")) != -1)
     	{
       switch (opt)
         {
@@ -113,6 +126,12 @@ main(int argc, char *argv[])
 	case 'n':
 		pkt_cnt = atoi(optarg);
 		break;
+	case 'a':
+		g_ascend = true;
+		break;
+	case 'p':
+		g_percent = true;
+		break;
 	case 'h':
 		usage = true;
 		break;
@@ -121,6 +140,9 @@ main(int argc, char *argv[])
 		break;
 	case 'r':	
 		g_remote = true;
+		break;
+	case 'm':
+		g_mark = true;
 		break;
 	case 'd':
 		g_debug = true;
@@ -143,7 +165,10 @@ main(int argc, char *argv[])
 		cerr << "Usage: saker -i <if> [-n num] [-v]" << endl
 			<< "\t-i <if>\t\tnetwork interface" << endl
 			<< "\t-n num\t\tnumber of packets to capture" << endl
-			<< "\t-r\t\tcount only remote end (exclude my MACs)" << endl
+			<< "\t-a\t\tascending sort (default descending)" << endl
+			<< "\t-p\t\tshow percentage" << endl
+			<< "\t-r\t\tcount only remote ends (exclude my MACs)" << endl
+			<< "\t-m\t\tmark my MACs with star (see also -r)" << endl
 			<< "\t-v\t\tbe verbose (e.g. output each packet)" << endl
 			<< "\t-d\t\tenable debug output (you are not supposed to understand it)" << endl;
 		exit(1);
@@ -212,9 +237,15 @@ main(int argc, char *argv[])
 	// we have first to copy all stats from src, which is ordered by MAC to src_score which is ordered by count, making possible printing stats ordered by count
 	transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
 	// and now we simply print stats by count :)
-	for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout));
+	if (g_ascend)
+		for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout));
+	else
+		for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout));
 	cout << "DST stats:" << endl;
 	// same for dst
         transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
-        for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout));
+	if (g_ascend)
+		for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout));
+	else
+		for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout));
 }

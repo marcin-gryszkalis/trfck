@@ -181,8 +181,8 @@ main(int argc, char *argv[])
 
     char rev[255] = "$Revision$";
     rev[strlen(rev)] = '\0';
-    rev += 11; // skip prefix
-    cerr << "Saker v" << rev << endl;
+    char *revp = rev + 11; // skip prefix
+    cerr << "Saker v" << revp << endl;
 
     while ((opt = getopt (argc, argv, "i:n:m:laphvrsdVD")) != -1)
     {

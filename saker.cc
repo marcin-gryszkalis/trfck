@@ -3,7 +3,6 @@
 // system and C includes
 #include <pcap.h>
 #include <cstdio>
-#include </usr/local/include/getopt.h>
 
 #include <sys/types.h>
 #include <unistd.h>

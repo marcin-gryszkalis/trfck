@@ -47,7 +47,7 @@ bool g_ascend = false;
 bool g_percent = false;
 
 #define DEFAULT_PKT_CNT (100)
-#define DEFAULT_DISP_CNT (-1)
+#define DEFAULT_MAC_CNT (-1)
 
 int  pkt_cnt = DEFAULT_PKT_CNT;
 int  mac_cnt = DEFAULT_MAC_CNT;
@@ -167,7 +167,9 @@ main(int argc, char *argv[])
     bool            usage = false; // show usage
 
     char *rev = "$Revision$";
-    rev[strlen(rev)] = 0;
+    size_t revl = strlen(rev);
+    // tu sie robi 'bus error', ale dlaczego????
+    //  rev[revl-2] = '\0';
     rev += 11; // skip prefix
     cerr << "Saker v" << rev << endl;
 

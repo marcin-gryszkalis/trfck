@@ -1,5 +1,11 @@
 // $Id$
 
+/** 
+ * Saker, net stats for bsd
+ * (c) 2004 Jan Pustelnik, Marcin Gryszkalis
+ * No license, grab the code and run.
+ */
+
 // system and C includes
 #include <pcap.h>
 #include <cstdio>

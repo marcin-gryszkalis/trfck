@@ -1,4 +1,4 @@
-//$Id$
+// $Id$
 // system and C includes
 #include <pcap.h>
 #include <cstdio>
@@ -80,7 +80,7 @@ main(int argc, char *argv[])
 	int 		opt;
 	bool		usage = false; // show usage
 
-	cerr << "Saker $Rev$"<< endl;
+	cerr << "Saker $Revision$"<< endl;
 
  	 while ((opt = getopt (argc, argv, "i:n:hv")) != -1)
     	{

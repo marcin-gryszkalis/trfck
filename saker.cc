@@ -6,10 +6,12 @@
 #include </usr/local/include/getopt.h>
 
 #include <sys/types.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <ifaddrs.h>
 #include <stdio.h>
 #include <net/if_dl.h>
+#include <signal.h>
 
 // C++ includes
 #include <string>
@@ -55,6 +57,7 @@ bool g_cont = false;
 
 int  pkt_cnt = DEFAULT_PKT_CNT;
 int  mac_cnt = DEFAULT_MAC_CNT;
+int  time_delay = DEFAULT_DELAY;
 int  src_cnt;
 int  dst_cnt;
 
@@ -171,15 +174,10 @@ public:
     }
 };
 
-
-void alarm_report(int sig)
-{
-	report();
-	alarm(time_delay);
-}
-
 void report(void)
 {
+    count << endl;
+
     if (!g_only_dst)
     {
 		cout << "SRC stats:" << endl;
@@ -217,6 +215,12 @@ void report(void)
     }
 }
 
+void alarm_report(int sig)
+{
+	report();
+	alarm(time_delay);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -227,7 +231,7 @@ main(int argc, char *argv[])
     bool            usage = false; // show usage
 
     char rev[255] = "$Revision$";
-    rev[strlen(rev)] = '\0';
+    rev[strlen(rev)-2] = '\0';
     char *revp = rev + 11; // skip prefix
     cerr << "saker v" << revp << endl;
 

@@ -1,9 +1,16 @@
 // $Id$
+
 // system and C includes
 #include <pcap.h>
 #include <cstdio>
 #include </usr/local/include/getopt.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <ifaddrs.h>
+#include <stdio.h>
+#include <net/if_dl.h>
+	
 // C++ includes
 #include <string>
 #include <iostream>
@@ -21,7 +28,10 @@ multimap<int, string> src_score; 	// container that keeps pairs (MAC, count)
 					// ordered by count of packets
 multimap<int, string> dst_score;	// same for dst addresses
 
+map<string, bool> own; // keeps list of own macs (for -r handling) 
+
 bool g_verbose = false;
+bool g_remote = false;
 
 void 
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
@@ -82,7 +92,7 @@ main(int argc, char *argv[])
 
 	cerr << "Saker $Revision$"<< endl;
 
- 	 while ((opt = getopt (argc, argv, "i:n:hv")) != -1)
+ 	 while ((opt = getopt (argc, argv, "i:n:hvr")) != -1)
     	{
       switch (opt)
         {
@@ -98,6 +108,9 @@ main(int argc, char *argv[])
 		break;
 	case 'v':
 		g_verbose = true;
+		break;
+	case 'r':	
+		g_remote = true;
 		break;
         default:
           cerr << "Error: Unknown command line option." << endl;
@@ -117,10 +130,51 @@ main(int argc, char *argv[])
 		cerr << "Usage: saker -i <if> [-n num] [-v]" << endl
 			<< "\t-i <if>\t\tnetwork interface" << endl
 			<< "\t-n num\t\tnumber of packets to capture" << endl
+			<< "\t-r\t\tcount only remote end" << endl
 			<< "\t-v\t\toptput each packet" << endl;
 		exit(1);
 	}
 
+
+// get own mac's
+	
+  struct ifaddrs *ifap, *ifaphead;
+  int rtnerr;
+  const struct sockaddr_dl *sdl;
+  caddr_t ap;
+  int alen;
+  char ownmac[18] = "..:..:..:..:..:.."; // 6*2+5+1
+
+  rtnerr = getifaddrs(&ifaphead);
+  if (rtnerr) {
+    perror(NULL);
+    return 1;
+  }
+
+  for (ifap = ifaphead; ifap; ifap = ifap->ifa_next) 
+  {
+    if (ifap->ifa_addr->sa_family == AF_LINK) {
+      sdl = (const struct sockaddr_dl *) ifap->ifa_addr;
+      ap = ((caddr_t)((sdl)->sdl_data + (sdl)->sdl_nlen));
+      alen = sdl->sdl_alen;
+      if (ap && alen > 0) {
+        int i;
+
+//        printf ("%s:", ifap->ifa_name); device name
+        for (i = 0; i < alen; i++, ap++)
+          sprintf(ownmac+i*3,"%c%02x", i > 0 ? ':' : ' ', 0xff&*ap);
+
+	cout << ownmac << endl;
+
+	// JANEK: own.put(ownmac, true);
+      }
+    }
+  }
+
+  freeifaddrs(ifaphead);
+    
+ 
+	
 	int             pcap_net = pcap_lookupnet(pcap_dev, &net, &mask, errbuff);
 	
 	pcap_t         *pcap_desc = pcap_open_live(pcap_dev, 100, 1, 1000, errbuff);

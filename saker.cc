@@ -176,7 +176,7 @@ public:
 
 void report(void)
 {
-    count << endl;
+    cout << endl;
 
     if (!g_only_dst)
     {

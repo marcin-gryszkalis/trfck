@@ -176,6 +176,14 @@ public:
 
 void report(void)
 {
+// container that keeps pairs (MAC, count)
+// representing src addresses of packets
+// ordered by count of packets
+    multimap<int, string> src_score;
+   
+// same for dst addresses 
+    multimap<int, string> dst_score; 
+
     cout << endl;
 
     if (!g_only_dst)

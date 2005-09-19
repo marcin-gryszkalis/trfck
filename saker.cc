@@ -1,9 +1,14 @@
-// $Id$
-
-/** 
+/**
  * Saker, net stats for bsd
- * (c) 2004 Jan Pustelnik, Marcin Gryszkalis
- * No license, grab the code and run.
+ * written by Jan Pustelnik, Marcin Gryszkalis
+ * no license, grab the code and run.
+ *
+ * pthread fix by Anna Dutek, Marta Ko¶cielnia, Edyta Dolowiec
+ *
+ * Compile with
+ * $ c++ -o saker -lpcap -lpthread saker.cc
+ *
+ * $Id$
  */
 
 // system and C includes
@@ -26,6 +31,8 @@
 #include <map>
 #include <algorithm>
 #include <iterator>
+
+#include <pthread.h>
 
 using namespace std;
 
@@ -71,6 +78,8 @@ int dst_cnt;
 int pkt_grb = 0; // number of packets actually grabbed
 int time_start = 0;
 
+pthread_t   thread_id;
+
 void
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 {
@@ -79,7 +88,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     map<string, int>::iterator mit;
 
     pkt_grb++;
-    
+
     for (i = 0; i < 6; i++)
         sprintf(buf+3*i, "%02x:", pkt[i + 6]);
     buf[17] = '\0';
@@ -130,11 +139,11 @@ template<class T> class print
     int _mac_cnt;
     bool g_mac_cnt;
 public:
-    print(ostream &out, int pc, int mc) : os(out), _pkt_cnt(pc), _mac_cnt(mc) { 
-	    if (mc != DEFAULT_MAC_CNT)
-		    g_mac_cnt = true;
-	    else
-		    g_mac_cnt = false;
+    print(ostream &out, int pc, int mc) : os(out), _pkt_cnt(pc), _mac_cnt(mc) {
+        if (mc != DEFAULT_MAC_CNT)
+            g_mac_cnt = true;
+        else
+            g_mac_cnt = false;
     }
 
     void operator() (T x)
@@ -154,8 +163,8 @@ public:
                         return; // shouldn't be asserted?
         }
 
-	char f[80];
-	sprintf(f, "%12d", x.first);
+    char f[80];
+    sprintf(f, "%12d", x.first);
         os << "\t" << f << "\t" << x.second;
 
         if (g_percent)
@@ -194,76 +203,81 @@ void report(void)
 // representing src addresses of packets
 // ordered by count of packets
     multimap<int, string> src_score;
-   
-// same for dst addresses 
-    multimap<int, string> dst_score; 
+
+// same for dst addresses
+    multimap<int, string> dst_score;
 
     // count the packets-per-second
     long delta =  time(NULL) - time_start;
     long pps = pkt_grb / (delta ? delta : 1);
-    
+
     cout << endl;
     cout << "Interface: " << pcap_dev << endl;
     cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
 
     if (!g_only_dst)
     {
-		cout << "SRC stats:" << endl;
-		src_cnt = pkt_grb;
+        cout << "SRC stats:" << endl;
+        src_cnt = pkt_grb;
 
-		// we have first to copy all stats from src, which is ordered by MAC to src_score
-		// which is ordered by count, making possible printing stats ordered by count
-		transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
+        // we have first to copy all stats from src, which is ordered by MAC to src_score
+        // which is ordered by count, making possible printing stats ordered by count
+        transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
 
-		if (g_remote)
-			for_each(src_score.begin(), src_score.end(), uncount<pair<int, string> >(&src_cnt));
+        if (g_remote)
+            for_each(src_score.begin(), src_score.end(), uncount<pair<int, string> >(&src_cnt));
 
-		// and now we simply print stats by count :)
-		if (g_ascend)
-			for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
-		else
-			for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+        // and now we simply print stats by count :)
+        if (g_ascend)
+            for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+        else
+            for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
     }
 
     if (!g_only_src)
     {
-		cout << "DST stats:" << endl;
-		dst_cnt = pkt_grb;
+        cout << "DST stats:" << endl;
+        dst_cnt = pkt_grb;
 
-		// same for dst
-		transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
+        // same for dst
+        transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
 
-		if (g_remote)
-			for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
-		
-		if (g_ascend)
-			for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
-		else
-			for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
+        if (g_remote)
+            for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
+
+        if (g_ascend)
+            for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
+        else
+            for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
     }
 }
 
-void alarm_report(int sig)
+void *alarm_report(void *arg)
 {
-	report();
-	alarm(time_delay);
+    int czas = *((int*) arg);
+    while (1)
+    {
+        report();
+        sleep(czas);
+    }
 }
 
 void sig_handler(int sig)
 {
-	cerr << endl << "saker: shutdown" << endl;
-	exit(127);	
+    cerr << endl << "saker: shutdown" << endl;
+    exit(127);
 }
+
+
 
 int
 main(int argc, char *argv[])
 {
     bpf_u_int32     net, mask;
-    char            errbuff[1024];
     int             opt;
     bool            usage = false; // show usage
+    char            errbuff[PCAP_ERRBUF_SIZE];
 
-    time_start = time(NULL);
 
     char rev[255] = "$Revision$";
     rev[strlen(rev)-2] = '\0';
@@ -280,76 +294,76 @@ main(int argc, char *argv[])
         case 'i':
             pcap_dev = (char *) strdup (optarg);
             break;
-        
-		case 'n':
+
+        case 'n':
             pkt_cnt = atoi(optarg);
             break;
-        
-		case 'm':
+
+        case 'm':
             mac_cnt = atoi(optarg);
             break;
-        
-		case 't':
+
+        case 't':
             time_delay = atoi(optarg);
-			if (time_delay < 1)
-				time_delay = 1;
+            if (time_delay < 1)
+                time_delay = 1;
             break;
 
-		case 'a':
+        case 'a':
             g_ascend = true;
             break;
-        
-		case 'p':
+
+        case 'p':
             g_percent = true;
             break;
-        
-		case 'h':
+
+        case 'h':
             usage = true;
             break;
-        
-		case 'v':
+
+        case 'v':
             g_verbose = true;
             break;
-        
-		case 'r':
+
+        case 'r':
             g_remote = true;
             break;
-        
-		case 'l':
+
+        case 'l':
             g_mark = true;
             break;
-		
-		case 'c':
-            g_cont = true;
+
+        case 'c':
+         {g_cont = true; pkt_cnt=-1;}
             break;
 
-		case 'd':
-			g_only_dst = true;
-			if (g_only_src)
-			{
-				cerr << "Error: You cannot have both -d and -s." << endl;
-				usage = true;
-			}
-			break;
-		
-		case 's':
-			g_only_src = true;
-			if (g_only_dst)
-			{
-				cerr << "Error: You cannot have both -d and -s." << endl;
-				usage = true;
-			}
-			break;
-        
-		case 'V':
-			exit(0);
+        case 'd':
+            g_only_dst = true;
+            if (g_only_src)
+            {
+                cerr << "Error: You cannot have both -d and -s." << endl;
+                usage = true;
+            }
             break;
-        
-		case 'D':
+
+        case 's':
+            g_only_src = true;
+            if (g_only_dst)
+            {
+                cerr << "Error: You cannot have both -d and -s." << endl;
+                usage = true;
+            }
+            break;
+
+        case 'V':
+            exit(0);
+            break;
+
+        case 'D':
             g_debug = true;
             break;
 
-		case '?':
+        case '?':
         default:
             cerr << "Error: Unknown command line option." << endl;
             usage = true;
@@ -365,10 +379,10 @@ main(int argc, char *argv[])
 
     if (usage)
     {
-        cerr << endl 
-			<< "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] -i <if>" << endl
+        cerr << endl
+            << "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] -i <if>" << endl
             << "\t-i <if>\t\tnetwork interface" << endl
-			<< "\t-h\t\tshow this info" << endl
+            << "\t-h\t\tshow this info" << endl
             << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ", -1 for unlimited)" << endl
             << "\t-a\t\tascending sort (default descending)" << endl
             << "\t-m num\t\tnumber of MACs to display in summary (all by default)" << endl
@@ -439,20 +453,22 @@ main(int argc, char *argv[])
 
     freeifaddrs(ifaphead);
 
-    // initialize pcap
+    time_start = time(NULL);
+
+    //initialize pcap
 
     int pcap_net = pcap_lookupnet(pcap_dev, &net, &mask, errbuff);
     pcap_t *pcap_desc = pcap_open_live(pcap_dev, 100, 1, 1000, errbuff);
     if (pcap_desc == NULL) { perror("pcap_open_live"); exit(3); }
 
-	if (g_cont)
-	{
-		signal(SIGALRM, alarm_report);
-		alarm(time_delay);
-	}
+    if (g_cont)
+        pthread_create(&thread_id, NULL, &alarm_report, &time_delay);
 
-	pcap_loop(pcap_desc, pkt_cnt, h, NULL);
-	report();   
+    pcap_loop(pcap_desc, pkt_cnt, h, NULL);
+
+    report();
 
     return 0;
 }
+
+

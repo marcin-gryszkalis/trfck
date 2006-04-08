@@ -3,6 +3,8 @@
  * written by Jan Pustelnik, Marcin Gryszkalis
  * no license, grab the code and run.
  *
+ * Requires FreeBSD 4.6 or later (because of poll(2) behavior on BPF devs)
+ *
  * Compile with
  * $ c++ -o saker -lpcap saker.cc
  *
@@ -61,17 +63,25 @@ bool g_only_src = false;
 bool g_cont = false;
 bool g_bpf = false;
 
+
+struct saker_device
+{
+    char *device;
+    pcap_t *pcap;
+    pollfd pfd;
+};
+
 #define MAX_IFACES (16)
-char *pcap_dev[MAX_IFACES];
-pcap_t *pcaps[MAX_IFACES];
-int	pcap_dev_no = 0;
+saker_device *dv[MAX_IFACES];
+int    pcap_dev_no = 0;
+
 #define PCAP_MAX_PKT_PER_DISPATCH (256)
 
 #define DEFAULT_PKT_CNT (100)
 #define DEFAULT_MAC_CNT (-1)
 #define DEFAULT_DELAY (10)
 
-int pkt_cnt = DEFAULT_PKT_CNT; 
+int pkt_cnt = DEFAULT_PKT_CNT;
 int mac_cnt = DEFAULT_MAC_CNT;
 int time_delay = DEFAULT_DELAY;
 int src_cnt;
@@ -216,9 +226,9 @@ void report(void)
 
     cout << endl;
     cout << "Interfaces: ";
- 	for (int i=0; i<pcap_dev_no; i++)
-		cout << pcap_dev[i] << " ";
-	cout << endl;
+     for (int i=0; i<pcap_dev_no; i++)
+        cout << dv[i]->device << " ";
+    cout << endl;
 
     cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
 
@@ -284,7 +294,7 @@ main(int argc, char *argv[])
     int             opt;
     bool            usage = false; // show usage
     char            errbuff[PCAP_ERRBUF_SIZE];
-	int 			i;
+    int             i;
 
     char rev[255] = "$Revision$";
     rev[strlen(rev)-2] = '\0';
@@ -294,26 +304,27 @@ main(int argc, char *argv[])
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
-	for (i=0; i<MAX_IFACES; i++)
-	{
-		pcaps[i] = NULL;
-		pcap_dev[i] = NULL;
-	}
+    for (i=0; i<MAX_IFACES; i++)
+    {
+        dv[i]->pcap = NULL;
+        dv[i]->device = NULL;
+        dv[i]->pfd = NULL;
+    }
 
     while ((opt = getopt (argc, argv, "i:n:m:t:claphvrsdf:VD")) != -1)
     {
         switch (opt)
         {
         case 'i':
-			if (pcap_dev_no < MAX_IFACES)
-			{
-            	pcap_dev[pcap_dev_no++] = (char *) strdup(optarg);
-			}
-			else
-			{
-				cerr << "Error: too many interfaces specified" << endl;
-				exit(2);
-			}
+            if (pcap_dev_no < MAX_IFACES)
+            {
+                dv[pcap_dev_no++]->device = (char *) strdup(optarg);
+            }
+            else
+            {
+                cerr << "Error: too many interfaces specified" << endl;
+                exit(2);
+            }
             break;
 
         case 'n':
@@ -377,7 +388,7 @@ main(int argc, char *argv[])
             break;
 
         case 'f':
-			g_bpf = true;
+            g_bpf = true;
             bpf = (char *) strdup(optarg);
             break;
 
@@ -427,9 +438,9 @@ main(int argc, char *argv[])
     }
 
     cerr << "Listening on: ";
-	for (i=0; i<pcap_dev_no; i++)
-		cerr << pcap_dev[i] << " ";
-	cerr << endl;
+    for (i=0; i<pcap_dev_no; i++)
+        cerr << dv[i]->device << " ";
+    cerr << endl;
 
     // get own mac's
 
@@ -468,9 +479,9 @@ main(int argc, char *argv[])
                 }
 
                 if (g_verbose)
-                    cout << ownmac 
-						<< " (" << ifap->ifa_name << ")"
-						<< endl;
+                    cout << ownmac
+                        << " (" << ifap->ifa_name << ")"
+                        << endl;
 
                 string ownmacstr(ownmac);
                 ownmacs.insert(ownmacstr);
@@ -487,88 +498,112 @@ main(int argc, char *argv[])
     time_start = time(NULL);
 
     //initialize pcap
-	for (i=0; i<pcap_dev_no; i++)
-	{
-		if (g_debug)
-			cerr << "PCAP init for " << pcap_dev[i] << endl;
- 
-			int pcap_net = pcap_lookupnet(pcap_dev[i], &net, &mask, errbuff);
-			if (pcap_net == -1)
-			{
-				cerr << "Error: pcap_lookupnet failed: "
-					<< errbuff
-					<< endl;
-				exit(4);
-			}
+    for (i=0; i<pcap_dev_no; i++)
+    {
+        if (g_debug)
+            cerr << "PCAP init for " << dv[i]->device << endl;
 
-			pcaps[i] = pcap_open_live(pcap_dev[i], 100, 1, 1000, errbuff);
-			if (pcaps[i] == NULL)
-			{
-				cerr << "Error: cannot open pcap live: "
-					<< errbuff
-					<< endl;
-				exit(3);
-			}
+            int pcap_net = pcap_lookupnet(dv[i]->device, &net, &mask, errbuff);
+            if (pcap_net == -1)
+            {
+                cerr << "Error: pcap_lookupnet failed: "
+                    << errbuff
+                    << endl;
+                exit(4);
+            }
 
-			if (pcap_setnonblock(pcaps[i], 1, errbuff) < 0)
-			{
-				cerr << "Error: cannot set nonblocking mode: "
-					<< errbuff
-					<< endl;
-				exit(3);
-			}
+            dv[i]->pcap = pcap_open_live(dv[i]->device, 100, 1, 1000, errbuff);
+            if (dv[i]->pcap == NULL)
+            {
+                cerr << "Error: cannot open pcap live: "
+                    << errbuff
+                    << endl;
+                exit(3);
+            }
 
-			if (g_bpf)
-			{
-					if (pcap_compile(pcaps[i], &bpff, bpf, 1, 0) < 0)
-					{
-						cerr << "Error: cannot compile BPF filter expression ("
-							<< pcap_geterr(pcaps[i])
-							<< ")"
-							<< endl;
-						exit(6);
-					}
+            if (pcap_setnonblock(dv[i]->pcap, 1, errbuff) < 0)
+            {
+                cerr << "Error: cannot set nonblocking mode: "
+                    << errbuff
+                    << endl;
+                exit(3);
+            }
 
-					if (pcap_setfilter(pcaps[i], &bpff))
-					{
-						cerr << "Error: cannot install BPF filter ("
-							<< pcap_geterr(pcaps[i])
-							<< ")"
-							<< endl;
-						exit(5);
-					}
-			}
-	}
+            if (g_bpf)
+            {
+                    if (pcap_compile(dv[i]->pcap, &bpff, bpf, 1, 0) < 0)
+                    {
+                        cerr << "Error: cannot compile BPF filter expression ("
+                            << pcap_geterr(dv[i]->pcap)
+                            << ")"
+                            << endl;
+                        exit(6);
+                    }
 
+                    if (pcap_setfilter(dv[i]->pcap, &bpff))
+                    {
+                        cerr << "Error: cannot install BPF filter ("
+                            << pcap_geterr(dv[i]->pcap)
+                            << ")"
+                            << endl;
+                        exit(5);
+                    }
+            }
+    }
 
-	time_t last_report_time = time(NULL);
-	while (pkt_grb < pkt_cnt || g_cont)
-	{
-	for (i=0; i<pcap_dev_no; i++)
-	{
-		int dispatched;
-    	if (dispatched = pcap_dispatch(pcaps[i], PCAP_MAX_PKT_PER_DISPATCH, h, NULL) < 0)
-		{
-			cerr << "Error: error during pcap dispatch ("
-				<< pcap_geterr(pcaps[i])
-				<< ")"
-				<< endl;
-			exit(5);
-		}
+    // init for poll(2)
+    for (i=0; i<pcap_dev_no; i++)
+    {
+        if ((dv[i].pfd.fd = pcap_get_selectable_fd(dv[i]->pcap)) == -1)
+        {
+            perror("Error: pcap_get_selectable_fd failed");
+            exit(5);
+        }
 
-//		if (g_debug)
-//			cerr << "PCAP dispatch (" << pcap_dev[i] << ")=" << dispatched << endl;
+        dv[i].pfd.events = POLLRDNORM;
+    }
 
-	}
+    // the main loop
+    time_t last_report_time = time(NULL);
+    while (g_cont || pkt_grb < pkt_cnt)
+    {
+        int dispatched;
 
-	time_t now = time(NULL);
-	if (now - last_report_time >= time_delay)
-	{
-		report();
-		last_report_time = now;
-	}
+        switch (poll(&pollfd, pcap_dev_no, -1)) // xxx -1 sucks
+        {
+            case -1:
+                if (errno != EINTR)
+                    perror("poll");
+                break;
 
-	}
+            case 0:
+                break;
+
+            default:
+                for (i=0; i<pcap_dev_no; i++)
+                {
+                    if (dv[i].pfd.revents)
+                    {
+                        if (dispatched = pcap_dispatch(dv[i]->pcap, PCAP_MAX_PKT_PER_DISPATCH, h, NULL) < 0)
+                        {
+                            cerr << "Error: error during pcap dispatch ("
+                                << pcap_geterr(dv[i]->pcap)
+                                << ")"
+                                << endl;
+                            exit(5);
+                        }
+                    }
+                }
+        }
+
+        time_t now = time(NULL);
+        if (now - last_report_time >= time_delay)
+        {
+            report();
+            last_report_time = now;
+        }
+
+    }
 
     report();
 

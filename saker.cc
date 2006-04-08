@@ -103,7 +103,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     char buf[50];
     int  i;
 	bpf_u_int32 pkt_size = pkthdr->len;
- 
+
     map<string, long>::iterator mit;
 
     pkt_grb++;
@@ -122,7 +122,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 		else
 	       src.insert(make_pair(s1, 1));
 	}
-    else // found, increase count 
+    else // found, increase count
 	{
 		if (g_bytemode)
 			mit->second += pkt_size;
@@ -142,7 +142,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
         	dst.insert(make_pair(s2, pkt_size));
 		else
 	       dst.insert(make_pair(s2, 1));
-	
+
 	}
     else
  	{
@@ -253,6 +253,11 @@ void report(void)
     long pps = pkt_grb / (delta ? delta : 1);
     long bps = size_grb / (delta ? delta : 1);
 
+    char hbps[1024];
+    char hsize[1024];
+    human_size(bps, hbps);
+    human_size(size_grb, hsize);
+
     cout << endl;
     cout << "Interfaces: ";
      for (int i=0; i<pcap_dev_no; i++)
@@ -260,7 +265,7 @@ void report(void)
     cout << endl;
 
     cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
-    cout << "Total size: " << size_grb << " (" << bps << " bps)" << endl;
+    cout << "Total size: " << hsize << " (" << hbps << " bps)" << endl;
 
     if (!g_only_dst)
     {
@@ -305,58 +310,51 @@ void sig_handler(int sig)
     exit(127);
 }
 
-/**
- * Converts a size to a human readable format.
- */
-CString FormatSize (long size)
+// Converts a size to a human readable format.
+void human_size(long size, char *output)
 {
-  static const long dwKB = 1024;          // Kilobyte
-  static const long dwMB = 1024 * dwKB;   // Megabyte
-  static const long dwGB = 1024 * dwMB;   // Gigabyte
+    static const long KB = 1024;
+    static const long MB = 1024 * KB;
+    static const long GB = 1024 * MB;
 
-  long dwNumber, dwRemainder;
-  CString strNumber;
+    long number, reminder;
 
-  if (dwFileSize < dwKB)
-  {
-		strNumber = dwFileSize + " B";
-  } 
-  else
-  {
-    if (dwFileSize < dwMB)
+    if (size < KB)
     {
-      dwNumber = dwFileSize / dwKB;
-      dwRemainder = (dwFileSize * 100 / dwKB) % 100;
-
-      strNumber.Format("%s.%02d KB", (LPCSTR)InsertSeparator(dwNumber), dwRemainder);
+        sprintf(output, "%ld B", size);
     }
     else
     {
-      if (dwFileSize < dwGB)
-      {
-        dwNumber = dwFileSize / dwMB;
-        dwRemainder = (dwFileSize * 100 / dwMB) % 100;
-        strNumber.Format("%s.%02d MB", InsertSeparator(dwNumber), dwRemainder);
-      }
-      else
-      {
-        if (dwFileSize >= dwGB)
+        if (size < MB)
         {
-          dwNumber = dwFileSize / dwGB;
-          dwRemainder = (dwFileSize * 100 / dwGB) % 100;
-          strNumber.Format("%s.%02d GB", InsertSeparator(dwNumber), dwRemainder);
+            number = size / KB;
+            reminder = (size * 100 / KB) % 100;
+
+            sprintf(output, "%ld.%02ld KB", size, reminder);
         }
-      }
+        else
+        {
+            if (size < GB)
+            {
+                number = size / MB;
+                reminder = (size * 100 / MB) % 100;
+                sprintf(output, "%ld.%02ld MB", number, reminder);
+            }
+            else
+            {
+                if (size >= GB)
+                {
+                    number = size / GB;
+                    reminder = (size * 100 / GB) % 100;
+                    sprintf(output, "%ld.%02ld GB", number, reminder);
+                }
+            }
+        }
     }
-  }
 
-  // Display decimal points only if needed
-  // another alternative to this approach is to check before calling str.Format, and 
-  // have separate cases depending on whether dwRemainder == 0 or not.
-  strNumber.Replace(".00", "");
-
-  return strNumber;
+//  strNumber.Replace(".00", "");
 }
+
 int main(int argc, char *argv[])
 {
     bpf_u_int32     net, mask;
@@ -648,7 +646,7 @@ int main(int argc, char *argv[])
     {
         int dispatched;
 		int pollret;
-        switch (pollret = poll(pollfdtab, pcap_dev_no, poll_delay)) 
+        switch (pollret = poll(pollfdtab, pcap_dev_no, poll_delay))
         {
             case -1:
                 if (errno != EINTR)

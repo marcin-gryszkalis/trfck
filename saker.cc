@@ -238,6 +238,51 @@ public:
     }
 };
 
+// Converts a size to a human readable format.
+void human_size(long size, char *output)
+{
+    static const unsigned long KB = 1024;
+    static const unsigned long MB = 1024 * KB;
+    static const unsigned long GB = 1024 * MB;
+
+    unsigned long number, reminder;
+
+    if (size < KB)
+    {
+        sprintf(output, "%lu B", size);
+    }
+    else
+    {
+        if (size < MB)
+        {
+            number = size / KB;
+            reminder = (size * 100 / KB) % 100;
+
+            sprintf(output, "%lu.%02lu KB", size, reminder);
+        }
+        else
+        {
+            if (size < GB)
+            {
+                number = size / MB;
+                reminder = (size * 100 / MB) % 100;
+                sprintf(output, "%lu.%02lu MB", number, reminder);
+            }
+            else
+            {
+                if (size >= GB)
+                {
+                    number = size / GB;
+                    reminder = (size * 100 / GB) % 100;
+                    sprintf(output, "%lu.%02lu GB", number, reminder);
+                }
+            }
+        }
+    }
+
+//  strNumber.Replace(".00", "");
+}
+
 void report(void)
 {
 // container that keeps pairs (MAC, count)
@@ -254,8 +299,10 @@ void report(void)
     long bps = size_grb / (delta ? delta : 1);
 
     char hbps[1024];
+    char hbbps[1024];
     char hsize[1024];
     human_size(bps, hbps);
+    human_size(bps*8, hbbps);
     human_size(size_grb, hsize);
 
     cout << endl;
@@ -265,7 +312,7 @@ void report(void)
     cout << endl;
 
     cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
-    cout << "Total size: " << hsize << " (" << hbps << " bps)" << endl;
+    cout << "Total size: " << hsize << " (" << hbps << "/s, " << hbbps << "its/s)" << endl;
 
     if (!g_only_dst)
     {
@@ -308,51 +355,6 @@ void sig_handler(int sig)
 {
     cerr << endl << "saker: shutdown" << endl;
     exit(127);
-}
-
-// Converts a size to a human readable format.
-void human_size(long size, char *output)
-{
-    static const long KB = 1024;
-    static const long MB = 1024 * KB;
-    static const long GB = 1024 * MB;
-
-    long number, reminder;
-
-    if (size < KB)
-    {
-        sprintf(output, "%ld B", size);
-    }
-    else
-    {
-        if (size < MB)
-        {
-            number = size / KB;
-            reminder = (size * 100 / KB) % 100;
-
-            sprintf(output, "%ld.%02ld KB", size, reminder);
-        }
-        else
-        {
-            if (size < GB)
-            {
-                number = size / MB;
-                reminder = (size * 100 / MB) % 100;
-                sprintf(output, "%ld.%02ld MB", number, reminder);
-            }
-            else
-            {
-                if (size >= GB)
-                {
-                    number = size / GB;
-                    reminder = (size * 100 / GB) % 100;
-                    sprintf(output, "%ld.%02ld GB", number, reminder);
-                }
-            }
-        }
-    }
-
-//  strNumber.Replace(".00", "");
 }
 
 int main(int argc, char *argv[])

@@ -63,6 +63,7 @@ bool g_percent = false;
 bool g_only_dst = false;
 bool g_only_src = false;
 bool g_cont = false;
+bool g_bpf = false;
 
 char *pcap_dev = NULL;
 
@@ -79,7 +80,7 @@ int pkt_grb = 0; // number of packets actually grabbed
 int time_start = 0;
 
 char *bpf;
-struct bpf_program bpf_filter;
+struct bpf_program bpff;
 
 pthread_t   thread_id;
 
@@ -114,7 +115,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     else
         ++(mit -> second);
 
-    if (g_verbose)
+    if (g_debug)
         cout << s1 << " ->> " << s2 << endl;
 }
 
@@ -255,7 +256,7 @@ void report(void)
     }
 }
 
-void *alarm_report(void *arg)
+void *th_report(void *arg)
 {
     int czas = *((int*) arg);
     while (1)
@@ -359,6 +360,7 @@ main(int argc, char *argv[])
             break;
 
         case 'f':
+			g_bpf = true;
             bpf = optarg;
             break;
 
@@ -421,7 +423,7 @@ main(int argc, char *argv[])
     rtnerr = getifaddrs(&ifaphead);
     if (rtnerr)
     {
-        perror("getifaddrs");
+        perror("Error: getifaddrs failed: ");
         exit(2);
     }
 
@@ -437,7 +439,6 @@ main(int argc, char *argv[])
             if (ap && alen > 0)
             {
                 int i;
-                //  printf ("%s:", ifap->ifa_name); device name
                 for (i = 0; i < alen; i++, ap++)
                 {
                     if (i > 0)
@@ -447,7 +448,9 @@ main(int argc, char *argv[])
                 }
 
                 if (g_verbose)
-                    cout << ownmac << endl;
+                    cout << ownmac 
+						<< " (" << ifap->ifa_name << ")"
+						<< endl;
 
                 string ownmacstr(ownmac);
                 ownmacs.insert(ownmacstr);
@@ -464,11 +467,10 @@ main(int argc, char *argv[])
     time_start = time(NULL);
 
     //initialize pcap
-
     int pcap_net = pcap_lookupnet(pcap_dev, &net, &mask, errbuff);
     if (pcap_net == -1)
     {
-        cerr << "pcap_lookupnet: "
+        cerr << "Error: pcap_lookupnet failed: "
             << errbuff
             << endl;
         exit(4);
@@ -477,23 +479,35 @@ main(int argc, char *argv[])
     pcap_t *pcap_desc = pcap_open_live(pcap_dev, 100, 1, 1000, errbuff);
     if (pcap_desc == NULL)
     {
-        cerr << "pcap_open_live: "
+        cerr << "Error: cannot open pcap live: "
             << errbuff
             << endl;
         exit(3);
     }
 
-    if (pcap_compile(pcap_desc, &bpf_filter, bpf, 1, 0) < 0)
-    {
-        cerr << "Error: cannot compile BPF filter expression ("
-            << pcap_geterr(pcap_desc)
-            << ")"
-            << endl;
-        exit(5);
-    }
+	if (g_bpf)
+	{
+			if (pcap_compile(pcap_desc, &bpff, bpf, 1, 0) < 0)
+			{
+				cerr << "Error: cannot compile BPF filter expression ("
+					<< pcap_geterr(pcap_desc)
+					<< ")"
+					<< endl;
+				exit(6);
+			}
 
-    if (g_cont)
-        pthread_create(&thread_id, NULL, &alarm_report, &time_delay);
+			if (pcap_setfilter(pcap_desc, &bpff))
+			{
+				cerr << "Error: cannot install BPF filter ("
+					<< pcap_geterr(pcap_desc)
+					<< ")"
+					<< endl;
+				exit(5);
+			}
+	}
+
+   if (g_cont)
+        pthread_create(&thread_id, NULL, &th_report, &time_delay);
 
     pcap_loop(pcap_desc, pkt_cnt, h, NULL);
 

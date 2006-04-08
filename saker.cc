@@ -38,24 +38,25 @@ using namespace std;
 
 // container that keeps pairs (MAC, count) representing src
 // addresses of packets ordered by MAC adress
-map<string, int> src;
+map<string, long> src;
 
 // same for dst addresses
-map<string, int> dst;
+map<string, long> dst;
 
 // container that keeps pairs (MAC, count)
 // representing src addresses of packets
-// ordered by count of packets
-multimap<int, string> src_score;
+// ordered by count of packets (or count of bytes)
+multimap<long, string> src_score;
 
 // same for dst addresses
-multimap<int, string> dst_score;
+multimap<long, string> dst_score;
 
 // keeps list of own macs (for -r handling)
 set<string> ownmacs;
 
 bool g_verbose = false;
 bool g_remote = false;
+bool g_bytemode = false;
 bool g_mark = false;
 bool g_debug = false;
 bool g_ascend = false;
@@ -84,26 +85,29 @@ int    pcap_dev_no = 0;
 #define DEFAULT_MAC_CNT (-1)
 #define DEFAULT_DELAY (10)
 
-int pkt_cnt = DEFAULT_PKT_CNT;
-int mac_cnt = DEFAULT_MAC_CNT;
+long pkt_cnt = DEFAULT_PKT_CNT;
+long mac_cnt = DEFAULT_MAC_CNT;
 int time_delay = DEFAULT_DELAY;
-int src_cnt;
-int dst_cnt;
-int pkt_grb = 0; // number of packets actually grabbed
+long pkt_grb = 0; // number of packets actually grabbed
+long size_grb = 0;
+
 time_t time_start = 0;
 
 char *bpf;
 struct bpf_program bpff;
 
-
+// PCAP callback function, grabs the packet
 void
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 {
     char buf[50];
     int  i;
-    map<string, int>::iterator mit;
+	bpf_u_int32 pkt_size = pkthdr->len;
+ 
+    map<string, long>::iterator mit;
 
     pkt_grb++;
+	size_grb += pkt_size;
 
     for (i = 0; i < 6; i++)
         sprintf(buf+3*i, "%02x:", pkt[i + 6]);
@@ -112,9 +116,19 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     string s1(buf);
     mit=src.find(s1);   // find element of src having MAC equal to s1
     if (mit == src.end()) // not found, create
-        src.insert(make_pair(s1, 1));
-    else // found, increase count by 1
-        ++(mit -> second);
+	{
+		if (g_bytemode)
+        	src.insert(make_pair(s1, pkt_size));
+		else
+	       src.insert(make_pair(s1, 1));
+	}
+    else // found, increase count 
+	{
+		if (g_bytemode)
+			mit->second += pkt_size;
+		else
+        	++(mit -> second);
+	}
 
     for (i = 0; i < 6; i++)
         sprintf(buf+3*i, "%02x:", pkt[i]);
@@ -123,9 +137,20 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     string s2(buf);
     mit=dst.find(s2);   // same for dst
     if (mit == dst.end())
-        dst.insert(make_pair(s2, 1));
+	{
+    		if (g_bytemode)
+        	dst.insert(make_pair(s2, pkt_size));
+		else
+	       dst.insert(make_pair(s2, 1));
+	
+	}
     else
-        ++(mit -> second);
+ 	{
+		if (g_bytemode)
+			mit->second += pkt_size;
+		else
+        	++(mit -> second);
+	}
 
     if (g_debug)
         cout << s1 << " ->> " << s2 << endl;
@@ -133,9 +158,9 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 
 template<class T> class uncount
 {
-    int* cnt_var;
+    long* cnt_var;
 public:
-    uncount(int* cv) : cnt_var(cv) {}
+    uncount(long* cv) : cnt_var(cv) {}
     void operator() (T x)
     {
         if (ownmacs.find(x.second) != ownmacs.end())
@@ -151,11 +176,11 @@ public:
 template<class T> class print
 {
     ostream &os;
-    int _pkt_cnt;
-    int _mac_cnt;
+    long _pkt_cnt;
+    long _mac_cnt;
     bool g_mac_cnt;
 public:
-    print(ostream &out, int pc, int mc) : os(out), _pkt_cnt(pc), _mac_cnt(mc) {
+    print(ostream &out, long pc, long mc) : os(out), _pkt_cnt(pc), _mac_cnt(mc) {
         if (mc != DEFAULT_MAC_CNT)
             g_mac_cnt = true;
         else
@@ -226,6 +251,7 @@ void report(void)
     // count the packets-per-second
     long delta =  time(NULL) - time_start;
     long pps = pkt_grb / (delta ? delta : 1);
+    long bps = size_grb / (delta ? delta : 1);
 
     cout << endl;
     cout << "Interfaces: ";
@@ -234,51 +260,42 @@ void report(void)
     cout << endl;
 
     cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
+    cout << "Total size: " << size_grb << " (" << bps << " bps)" << endl;
 
     if (!g_only_dst)
     {
         cout << "SRC stats:" << endl;
-        src_cnt = pkt_grb;
+        long srcv = g_bytemode ? size_grb : pkt_grb;
 
         // we have first to copy all stats from src, which is ordered by MAC to src_score
         // which is ordered by count, making possible printing stats ordered by count
-        transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, int>());
+        transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, long>());
 
         if (g_remote)
-            for_each(src_score.begin(), src_score.end(), uncount<pair<int, string> >(&src_cnt));
+            for_each(src_score.begin(), src_score.end(), uncount<pair<long, string> >(&srcv));
 
         // and now we simply print stats by count :)
         if (g_ascend)
-            for_each(src_score.begin(), src_score.end(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+            for_each(src_score.begin(), src_score.end(), print<pair<long, string> >(cout, srcv, mac_cnt));
         else
-            for_each(src_score.rbegin(), src_score.rend(), print<pair<int, string> >(cout, src_cnt, mac_cnt));
+            for_each(src_score.rbegin(), src_score.rend(), print<pair<long, string> >(cout, srcv, mac_cnt));
     }
 
     if (!g_only_src)
     {
         cout << "DST stats:" << endl;
-        dst_cnt = pkt_grb;
+        long dstv = g_bytemode ? size_grb : pkt_grb;
 
         // same for dst
-        transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, int>());
+        transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, long>());
 
         if (g_remote)
-            for_each(dst_score.begin(), dst_score.end(), uncount<pair<int, string> >(&dst_cnt));
+            for_each(dst_score.begin(), dst_score.end(), uncount<pair<long, string> >(&dstv));
 
         if (g_ascend)
-            for_each(dst_score.begin(), dst_score.end(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
+            for_each(dst_score.begin(), dst_score.end(), print<pair<long, string> >(cout, dstv, mac_cnt));
         else
-            for_each(dst_score.rbegin(), dst_score.rend(), print<pair<int, string> >(cout, dst_cnt, mac_cnt));
-    }
-}
-
-void *th_report(void *arg)
-{
-    int czas = *((int*) arg);
-    while (1)
-    {
-        report();
-        sleep(czas);
+            for_each(dst_score.rbegin(), dst_score.rend(), print<pair<long, string> >(cout, dstv, mac_cnt));
     }
 }
 
@@ -288,10 +305,59 @@ void sig_handler(int sig)
     exit(127);
 }
 
+/**
+ * Converts a size to a human readable format.
+ */
+CString FormatSize (long size)
+{
+  static const long dwKB = 1024;          // Kilobyte
+  static const long dwMB = 1024 * dwKB;   // Megabyte
+  static const long dwGB = 1024 * dwMB;   // Gigabyte
 
+  long dwNumber, dwRemainder;
+  CString strNumber;
 
-int
-main(int argc, char *argv[])
+  if (dwFileSize < dwKB)
+  {
+		strNumber = dwFileSize + " B";
+  } 
+  else
+  {
+    if (dwFileSize < dwMB)
+    {
+      dwNumber = dwFileSize / dwKB;
+      dwRemainder = (dwFileSize * 100 / dwKB) % 100;
+
+      strNumber.Format("%s.%02d KB", (LPCSTR)InsertSeparator(dwNumber), dwRemainder);
+    }
+    else
+    {
+      if (dwFileSize < dwGB)
+      {
+        dwNumber = dwFileSize / dwMB;
+        dwRemainder = (dwFileSize * 100 / dwMB) % 100;
+        strNumber.Format("%s.%02d MB", InsertSeparator(dwNumber), dwRemainder);
+      }
+      else
+      {
+        if (dwFileSize >= dwGB)
+        {
+          dwNumber = dwFileSize / dwGB;
+          dwRemainder = (dwFileSize * 100 / dwGB) % 100;
+          strNumber.Format("%s.%02d GB", InsertSeparator(dwNumber), dwRemainder);
+        }
+      }
+    }
+  }
+
+  // Display decimal points only if needed
+  // another alternative to this approach is to check before calling str.Format, and 
+  // have separate cases depending on whether dwRemainder == 0 or not.
+  strNumber.Replace(".00", "");
+
+  return strNumber;
+}
+int main(int argc, char *argv[])
 {
     bpf_u_int32     net, mask;
     int             opt;
@@ -314,7 +380,7 @@ main(int argc, char *argv[])
         dv[i].pfd.fd = -1;
     }
 
-    while ((opt = getopt (argc, argv, "i:n:m:t:claphvrsdf:VD")) != -1)
+    while ((opt = getopt (argc, argv, "i:n:m:t:clapbhvrsdf:VD")) != -1)
     {
         switch (opt)
         {
@@ -350,6 +416,10 @@ main(int argc, char *argv[])
 
         case 'p':
             g_percent = true;
+            break;
+
+        case 'b':
+            g_bytemode = true;
             break;
 
         case 'h':
@@ -420,14 +490,15 @@ main(int argc, char *argv[])
     if (usage)
     {
         cerr << endl
-            << "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if> [-i <if2> ... ]" << endl
+            << "Usage: saker [-apbrmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if> [-i <if2> ... ]" << endl
             << "\t-i <if>\t\tnetwork interface (many interfaces can be specified)" << endl
             << "\t-h\t\tshow this info" << endl
             << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ", -1 for unlimited)" << endl
             << "\t-a\t\tascending sort (default descending)" << endl
             << "\t-m num\t\tnumber of MACs to display in summary (all by default)" << endl
             << "\t-p\t\tshow percentage" << endl
-            << "\t-r\t\tcount only remote ends (exclude my MACs)" << endl
+            << "\t-b\t\tcount bytes (instead of packets)" << endl
+            << "\t-r\t\tcount only remote ends (exclude own MACs)" << endl
             << "\t-l\t\tmark local MACs with asterisk (see also -r)" << endl
             << "\t-s\t\tshow only source stats" << endl
             << "\t-d\t\tshow only destination stats" << endl

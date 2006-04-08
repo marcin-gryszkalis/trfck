@@ -78,6 +78,9 @@ int dst_cnt;
 int pkt_grb = 0; // number of packets actually grabbed
 int time_start = 0;
 
+char *bpf;
+struct bpf_program bpf_filter;
+
 pthread_t   thread_id;
 
 void
@@ -287,7 +290,7 @@ main(int argc, char *argv[])
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
-    while ((opt = getopt (argc, argv, "i:n:m:t:claphvrsdVD")) != -1)
+    while ((opt = getopt (argc, argv, "i:n:m:t:claphvrsdf:VD")) != -1)
     {
         switch (opt)
         {
@@ -355,6 +358,10 @@ main(int argc, char *argv[])
             }
             break;
 
+        case 'f':
+            bpf = optarg;
+            break;
+
         case 'V':
             exit(0);
             break;
@@ -380,7 +387,7 @@ main(int argc, char *argv[])
     if (usage)
     {
         cerr << endl
-            << "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] -i <if>" << endl
+            << "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if>" << endl
             << "\t-i <if>\t\tnetwork interface" << endl
             << "\t-h\t\tshow this info" << endl
             << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ", -1 for unlimited)" << endl
@@ -393,6 +400,7 @@ main(int argc, char *argv[])
             << "\t-d\t\tshow only destination stats" << endl
             << "\t-c\t\tcontinuous mode" << endl
             << "\t-t\t\ttime delay for continuous mode in seconds (default "<< DEFAULT_DELAY << ")" << endl
+            << "\t-f 'expr'\t\texpr is a pcap-style BPF expression (man tcpdump)" << endl
             << "\t-v\t\tbe verbose (e.g. output each packet)" << endl
             << "\t-V\t\tprint version and exit" << endl
             << "\t-D\t\tenable debug output (you are not supposed to understand it)" << endl;
@@ -458,8 +466,31 @@ main(int argc, char *argv[])
     //initialize pcap
 
     int pcap_net = pcap_lookupnet(pcap_dev, &net, &mask, errbuff);
+    if (pcap_net == -1)
+    {
+        cerr << "pcap_lookupnet: "
+            << errbuff
+            << endl;
+        exit(4);
+    }
+
     pcap_t *pcap_desc = pcap_open_live(pcap_dev, 100, 1, 1000, errbuff);
-    if (pcap_desc == NULL) { perror("pcap_open_live"); exit(3); }
+    if (pcap_desc == NULL)
+    {
+        cerr << "pcap_open_live: "
+            << errbuff
+            << endl;
+        exit(3);
+    }
+
+    if (pcap_compile(pcap_desc, &bpf_filter, bpf, 1, 0) < 0)
+    {
+        cerr << "Error: cannot compile BPF filter expression ("
+            << pcap_geterr(pcap_desc)
+            << ")"
+            << endl;
+        exit(5);
+    }
 
     if (g_cont)
         pthread_create(&thread_id, NULL, &alarm_report, &time_delay);

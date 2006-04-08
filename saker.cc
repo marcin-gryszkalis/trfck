@@ -3,10 +3,8 @@
  * written by Jan Pustelnik, Marcin Gryszkalis
  * no license, grab the code and run.
  *
- * pthread fix by Anna Dutek, Marta Ko¶cielnia, Edyta Dolowiec
- *
  * Compile with
- * $ c++ -o saker -lpcap -lpthread saker.cc
+ * $ c++ -o saker -lpcap saker.cc
  *
  * $Id$
  */
@@ -31,8 +29,6 @@
 #include <map>
 #include <algorithm>
 #include <iterator>
-
-#include <pthread.h>
 
 using namespace std;
 
@@ -65,24 +61,27 @@ bool g_only_src = false;
 bool g_cont = false;
 bool g_bpf = false;
 
-char *pcap_dev = NULL;
+#define MAX_IFACES (16)
+char *pcap_dev[MAX_IFACES];
+pcap_t *pcaps[MAX_IFACES];
+int	pcap_dev_no = 0;
+#define PCAP_MAX_PKT_PER_DISPATCH (256)
 
 #define DEFAULT_PKT_CNT (100)
 #define DEFAULT_MAC_CNT (-1)
 #define DEFAULT_DELAY (10)
 
-int pkt_cnt = DEFAULT_PKT_CNT;
+int pkt_cnt = DEFAULT_PKT_CNT; 
 int mac_cnt = DEFAULT_MAC_CNT;
 int time_delay = DEFAULT_DELAY;
 int src_cnt;
 int dst_cnt;
 int pkt_grb = 0; // number of packets actually grabbed
-int time_start = 0;
+time_t time_start = 0;
 
 char *bpf;
 struct bpf_program bpff;
 
-pthread_t   thread_id;
 
 void
 h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
@@ -216,7 +215,11 @@ void report(void)
     long pps = pkt_grb / (delta ? delta : 1);
 
     cout << endl;
-    cout << "Interface: " << pcap_dev << endl;
+    cout << "Interfaces: ";
+ 	for (int i=0; i<pcap_dev_no; i++)
+		cout << pcap_dev[i] << " ";
+	cout << endl;
+
     cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
 
     if (!g_only_dst)
@@ -281,7 +284,7 @@ main(int argc, char *argv[])
     int             opt;
     bool            usage = false; // show usage
     char            errbuff[PCAP_ERRBUF_SIZE];
-
+	int 			i;
 
     char rev[255] = "$Revision$";
     rev[strlen(rev)-2] = '\0';
@@ -291,12 +294,26 @@ main(int argc, char *argv[])
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
+	for (i=0; i<MAX_IFACES; i++)
+	{
+		pcaps[i] = NULL;
+		pcap_dev[i] = NULL;
+	}
+
     while ((opt = getopt (argc, argv, "i:n:m:t:claphvrsdf:VD")) != -1)
     {
         switch (opt)
         {
         case 'i':
-            pcap_dev = (char *) strdup (optarg);
+			if (pcap_dev_no < MAX_IFACES)
+			{
+            	pcap_dev[pcap_dev_no++] = (char *) strdup(optarg);
+			}
+			else
+			{
+				cerr << "Error: too many interfaces specified" << endl;
+				exit(2);
+			}
             break;
 
         case 'n':
@@ -361,7 +378,7 @@ main(int argc, char *argv[])
 
         case 'f':
 			g_bpf = true;
-            bpf = optarg;
+            bpf = (char *) strdup(optarg);
             break;
 
         case 'V':
@@ -380,17 +397,17 @@ main(int argc, char *argv[])
         }
     }
 
-    if (usage == false && pcap_dev == NULL)
+    if (usage == false && pcap_dev_no == 0)
     {
-        cerr << "Error: Interface not specified." << endl;
+        cerr << "Error: Interface(s) not specified." << endl;
         usage = true;
     }
 
     if (usage)
     {
         cerr << endl
-            << "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if>" << endl
-            << "\t-i <if>\t\tnetwork interface" << endl
+            << "Usage: saker [-aprmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if> [-i <if2> ... ]" << endl
+            << "\t-i <if>\t\tnetwork interface (many interfaces can be specified)" << endl
             << "\t-h\t\tshow this info" << endl
             << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ", -1 for unlimited)" << endl
             << "\t-a\t\tascending sort (default descending)" << endl
@@ -409,7 +426,10 @@ main(int argc, char *argv[])
         exit(1);
     }
 
-    cerr << "Listening on: " << pcap_dev << endl;
+    cerr << "Listening on: ";
+	for (i=0; i<pcap_dev_no; i++)
+		cerr << pcap_dev[i] << " ";
+	cerr << endl;
 
     // get own mac's
 
@@ -467,49 +487,88 @@ main(int argc, char *argv[])
     time_start = time(NULL);
 
     //initialize pcap
-    int pcap_net = pcap_lookupnet(pcap_dev, &net, &mask, errbuff);
-    if (pcap_net == -1)
-    {
-        cerr << "Error: pcap_lookupnet failed: "
-            << errbuff
-            << endl;
-        exit(4);
-    }
-
-    pcap_t *pcap_desc = pcap_open_live(pcap_dev, 100, 1, 1000, errbuff);
-    if (pcap_desc == NULL)
-    {
-        cerr << "Error: cannot open pcap live: "
-            << errbuff
-            << endl;
-        exit(3);
-    }
-
-	if (g_bpf)
+	for (i=0; i<pcap_dev_no; i++)
 	{
-			if (pcap_compile(pcap_desc, &bpff, bpf, 1, 0) < 0)
+		if (g_debug)
+			cerr << "PCAP init for " << pcap_dev[i] << endl;
+ 
+			int pcap_net = pcap_lookupnet(pcap_dev[i], &net, &mask, errbuff);
+			if (pcap_net == -1)
 			{
-				cerr << "Error: cannot compile BPF filter expression ("
-					<< pcap_geterr(pcap_desc)
-					<< ")"
+				cerr << "Error: pcap_lookupnet failed: "
+					<< errbuff
 					<< endl;
-				exit(6);
+				exit(4);
 			}
 
-			if (pcap_setfilter(pcap_desc, &bpff))
+			pcaps[i] = pcap_open_live(pcap_dev[i], 100, 1, 1000, errbuff);
+			if (pcaps[i] == NULL)
 			{
-				cerr << "Error: cannot install BPF filter ("
-					<< pcap_geterr(pcap_desc)
-					<< ")"
+				cerr << "Error: cannot open pcap live: "
+					<< errbuff
 					<< endl;
-				exit(5);
+				exit(3);
+			}
+
+			if (pcap_setnonblock(pcaps[i], 1, errbuff) < 0)
+			{
+				cerr << "Error: cannot set nonblocking mode: "
+					<< errbuff
+					<< endl;
+				exit(3);
+			}
+
+			if (g_bpf)
+			{
+					if (pcap_compile(pcaps[i], &bpff, bpf, 1, 0) < 0)
+					{
+						cerr << "Error: cannot compile BPF filter expression ("
+							<< pcap_geterr(pcaps[i])
+							<< ")"
+							<< endl;
+						exit(6);
+					}
+
+					if (pcap_setfilter(pcaps[i], &bpff))
+					{
+						cerr << "Error: cannot install BPF filter ("
+							<< pcap_geterr(pcaps[i])
+							<< ")"
+							<< endl;
+						exit(5);
+					}
 			}
 	}
 
-   if (g_cont)
-        pthread_create(&thread_id, NULL, &th_report, &time_delay);
 
-    pcap_loop(pcap_desc, pkt_cnt, h, NULL);
+	time_t last_report_time = time(NULL);
+	while (pkt_grb < pkt_cnt || g_cont)
+	{
+	for (i=0; i<pcap_dev_no; i++)
+	{
+		int dispatched;
+    	if (dispatched = pcap_dispatch(pcaps[i], PCAP_MAX_PKT_PER_DISPATCH, h, NULL) < 0)
+		{
+			cerr << "Error: error during pcap dispatch ("
+				<< pcap_geterr(pcaps[i])
+				<< ")"
+				<< endl;
+			exit(5);
+		}
+
+//		if (g_debug)
+//			cerr << "PCAP dispatch (" << pcap_dev[i] << ")=" << dispatched << endl;
+
+	}
+
+	time_t now = time(NULL);
+	if (now - last_report_time >= time_delay)
+	{
+		report();
+		last_report_time = now;
+	}
+
+	}
 
     report();
 

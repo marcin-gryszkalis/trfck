@@ -176,11 +176,11 @@ public:
 template<class T> class print
 {
     ostream &os;
-    long _pkt_cnt;
+    long _cnt;
     long _mac_cnt;
     bool g_mac_cnt;
 public:
-    print(ostream &out, long pc, long mc) : os(out), _pkt_cnt(pc), _mac_cnt(mc) {
+    print(ostream &out, long pc, long mc) : os(out), _cnt(pc), _mac_cnt(mc) {
         if (mc != DEFAULT_MAC_CNT)
             g_mac_cnt = true;
         else
@@ -198,20 +198,27 @@ public:
                 return;
             }
         }
-        if (g_mac_cnt) {
-                _mac_cnt--;
-                if (_mac_cnt < 0)
-                        return; // shouldn't be asserted?
+
+        if (g_mac_cnt)
+        {
+            _mac_cnt--;
+            if (_mac_cnt < 0)
+                return; // shouldn't be asserted?
         }
 
-    char f[80];
-    sprintf(f, "%12d", x.first);
+
+        char f[80];
+        if (g_bytemode)
+            sprintf(f, "%12s", human_size(x.first));
+        else
+            sprintf(f, "%12d", x.first);
+
         os << "\t" << f << "\t" << x.second;
 
         if (g_percent)
         {
             char s[10];
-            sprintf(s, "%4.1f", (static_cast<double>(x.first)/_pkt_cnt)*100.0);
+            sprintf(s, "%4.1f", (static_cast<double>(x.first)/_cnt)*100.0);
             cout << "\t" << s << "%";
         }
 
@@ -491,23 +498,23 @@ int main(int argc, char *argv[])
     {
         cerr << endl
             << "Usage: saker [-apbrmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if> [-i <if2> ... ]" << endl
-            << "\t-i <if>\t\tnetwork interface (many interfaces can be specified)" << endl
-            << "\t-h\t\tshow this info" << endl
-            << "\t-n num\t\tnumber of packets to capture (default " << DEFAULT_PKT_CNT << ", -1 for unlimited)" << endl
-            << "\t-a\t\tascending sort (default descending)" << endl
-            << "\t-m num\t\tnumber of MACs to display in summary (all by default)" << endl
-            << "\t-p\t\tshow percentage" << endl
-            << "\t-b\t\tcount bytes (instead of packets)" << endl
-            << "\t-r\t\tcount only remote ends (exclude own MACs)" << endl
-            << "\t-l\t\tmark local MACs with asterisk (see also -r)" << endl
-            << "\t-s\t\tshow only source stats" << endl
-            << "\t-d\t\tshow only destination stats" << endl
-            << "\t-c\t\tcontinuous mode" << endl
-            << "\t-t\t\ttime delay for continuous mode in seconds (default "<< DEFAULT_DELAY << ")" << endl
-            << "\t-f 'expr'\t\texpr is a pcap-style BPF expression (man tcpdump)" << endl
-            << "\t-v\t\tbe verbose (e.g. output each packet)" << endl
-            << "\t-V\t\tprint version and exit" << endl
-            << "\t-D\t\tenable debug output (you are not supposed to understand it)" << endl;
+            << "  -i <if>   network interface (many interfaces can be specified)" << endl
+            << "  -h        show this info" << endl
+            << "  -n num    number of packets to capture (default " << DEFAULT_PKT_CNT << ", -1 for unlimited)" << endl
+            << "  -a        ascending sort (default descending)" << endl
+            << "  -m num    number of MACs to display in summary (all by default)" << endl
+            << "  -p        show percentage" << endl
+            << "  -b        count bytes (instead of packets)" << endl
+            << "  -r        count only remote ends (exclude own MACs)" << endl
+            << "  -l        mark local MACs with asterisk (see also -r)" << endl
+            << "  -s        show only source stats" << endl
+            << "  -d        show only destination stats" << endl
+            << "  -c        continuous mode" << endl
+            << "  -t        time delay for continuous mode in seconds (default "<< DEFAULT_DELAY << ")" << endl
+            << "  -f 'expr' expr is a pcap-style BPF expression (man tcpdump)" << endl
+            << "  -v        be verbose (e.g. output each packet)" << endl
+            << "  -V        print version and exit" << endl
+            << "  -D        enable debug output (you are not supposed to understand it)" << endl;
         exit(1);
     }
 

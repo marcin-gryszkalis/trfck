@@ -180,7 +180,8 @@ template<class T> class print
     long _mac_cnt;
     bool g_mac_cnt;
 public:
-    print(ostream &out, long pc, long mc) : os(out), _cnt(pc), _mac_cnt(mc) {
+    print(ostream &out, long pc, long mc) : os(out), _cnt(pc), _mac_cnt(mc) 
+	{
         if (mc != DEFAULT_MAC_CNT)
             g_mac_cnt = true;
         else
@@ -207,11 +208,17 @@ public:
         }
 
 
-        char f[80];
+        char f[1024];
         if (g_bytemode)
-            sprintf(f, "%12s", human_size(x.first));
+		{
+			char f1[1024];
+			human_size(x.first, f1);
+            sprintf(f, "%12s", f1);
+		}	
         else
+		{
             sprintf(f, "%12d", x.first);
+		}
 
         os << "\t" << f << "\t" << x.second;
 
@@ -246,17 +253,17 @@ public:
 };
 
 // Converts a size to a human readable format.
-void human_size(long size, char *output)
+void human_size(long _size, char *output)
 {
     static const unsigned long KB = 1024;
     static const unsigned long MB = 1024 * KB;
     static const unsigned long GB = 1024 * MB;
 
-    unsigned long number, reminder;
-
+    unsigned long number = 0, reminder = 0;
+	unsigned long size = _size;
     if (size < KB)
     {
-        sprintf(output, "%lu B", size);
+        sprintf(output, "%ul B", size);
     }
     else
     {
@@ -265,7 +272,7 @@ void human_size(long size, char *output)
             number = size / KB;
             reminder = (size * 100 / KB) % 100;
 
-            sprintf(output, "%lu.%02lu KB", size, reminder);
+            snprintf(output, 256, "%ld.%02lu KB", number, reminder);
         }
         else
         {
@@ -287,6 +294,7 @@ void human_size(long size, char *output)
         }
     }
 
+// cerr << "!" << size << "!" << number << "!" << output << "!" << endl;
 //  strNumber.Replace(".00", "");
 }
 

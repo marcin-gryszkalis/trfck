@@ -51,7 +51,7 @@ multimap<long, string> src_score;
 // same for dst addresses
 multimap<long, string> dst_score;
 
-// keeps list of own macs (for -r handling)
+// keeps list of own macs (for -r/-l handling)
 set<string> ownmacs;
 
 bool g_verbose = false;
@@ -65,7 +65,7 @@ bool g_only_dst = false;
 bool g_only_src = false;
 bool g_cont = false;
 bool g_bpf = false;
-
+bool g_promisc = true; // on by dafault!
 
 struct saker_device
 {
@@ -180,7 +180,7 @@ template<class T> class print
     long _mac_cnt;
     bool g_mac_cnt;
 public:
-    print(ostream &out, long pc, long mc) : os(out), _cnt(pc), _mac_cnt(mc) 
+    print(ostream &out, long pc, long mc) : os(out), _cnt(pc), _mac_cnt(mc)
 	{
         if (mc != DEFAULT_MAC_CNT)
             g_mac_cnt = true;
@@ -214,7 +214,7 @@ public:
 			char f1[1024];
 			human_size(x.first, f1);
             sprintf(f, "%12s", f1);
-		}	
+		}
         else
 		{
             sprintf(f, "%12d", x.first);
@@ -395,7 +395,7 @@ int main(int argc, char *argv[])
         dv[i].pfd.fd = -1;
     }
 
-    while ((opt = getopt (argc, argv, "i:n:m:t:clapbhvrsdf:VD")) != -1)
+    while ((opt = getopt (argc, argv, "i:n:m:t:clapbhvorsdf:VD")) != -1)
     {
         switch (opt)
         {
@@ -451,6 +451,10 @@ int main(int argc, char *argv[])
 
         case 'l':
             g_mark = true;
+            break;
+
+        case 'o':
+            g_promisc = false;
             break;
 
         case 'c':
@@ -518,6 +522,7 @@ int main(int argc, char *argv[])
             << "  -s        show only source stats" << endl
             << "  -d        show only destination stats" << endl
             << "  -c        continuous mode" << endl
+            << "  -o        turn off promiscuous mode" << endl
             << "  -t        time delay for continuous mode in seconds (default "<< DEFAULT_DELAY << ")" << endl
             << "  -f 'expr' expr is a pcap-style BPF expression (man tcpdump)" << endl
             << "  -v        be verbose (e.g. output each packet)" << endl
@@ -601,7 +606,7 @@ int main(int argc, char *argv[])
                 exit(4);
             }
 
-            dv[i].pcap = pcap_open_live(dv[i].device, 100, 1, 1000, errbuff);
+            dv[i].pcap = pcap_open_live(dv[i].device, 100, g_promisc ? 1 : 0, 1000, errbuff);
             if (dv[i].pcap == NULL)
             {
                 cerr << "Error: cannot open pcap live: "

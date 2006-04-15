@@ -26,6 +26,7 @@
 #include <poll.h>
 #include <errno.h>
 
+#define SAKER_INT unsigned long long
 // C++ includes
 #include <string>
 #include <iostream>
@@ -38,18 +39,18 @@ using namespace std;
 
 // container that keeps pairs (MAC, count) representing src
 // addresses of packets ordered by MAC adress
-map<string, long> src;
+map<string, SAKER_INT> src;
 
 // same for dst addresses
-map<string, long> dst;
+map<string, SAKER_INT> dst;
 
 // container that keeps pairs (MAC, count)
 // representing src addresses of packets
 // ordered by count of packets (or count of bytes)
-multimap<long, string> src_score;
+multimap<SAKER_INT, string> src_score;
 
 // same for dst addresses
-multimap<long, string> dst_score;
+multimap<SAKER_INT, string> dst_score;
 
 // keeps list of own macs (for -r/-l handling)
 set<string> ownmacs;
@@ -66,6 +67,8 @@ bool g_only_src = false;
 bool g_cont = false;
 bool g_bpf = false;
 bool g_promisc = true; // on by dafault!
+bool g_mac_cnt = false;
+bool g_pkt_cnt = false;
 
 struct saker_device
 {
@@ -82,14 +85,15 @@ int    pcap_dev_no = 0;
 #define PCAP_MAX_PKT_PER_DISPATCH (256)
 
 #define DEFAULT_PKT_CNT (100)
-#define DEFAULT_MAC_CNT (-1)
 #define DEFAULT_DELAY (10)
 
-long pkt_cnt = DEFAULT_PKT_CNT;
-long mac_cnt = DEFAULT_MAC_CNT;
+SAKER_INT pkt_cnt = DEFAULT_PKT_CNT;
+SAKER_INT mac_cnt = 0; 
+
 int time_delay = DEFAULT_DELAY;
-long pkt_grb = 0; // number of packets actually grabbed
-long size_grb = 0;
+
+SAKER_INT pkt_grb = 0; // number of packets actually grabbed
+SAKER_INT size_grb = 0;
 
 time_t time_start = 0;
 
@@ -104,7 +108,7 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     int  i;
 	bpf_u_int32 pkt_size = pkthdr->len;
 
-    map<string, long>::iterator mit;
+    map<string, SAKER_INT>::iterator mit;
 
     pkt_grb++;
 	size_grb += pkt_size;
@@ -158,9 +162,9 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 
 template<class T> class uncount
 {
-    long* cnt_var;
+    SAKER_INT* cnt_var;
 public:
-    uncount(long* cv) : cnt_var(cv) {}
+    uncount(SAKER_INT* cv) : cnt_var(cv) {}
     void operator() (T x)
     {
         if (ownmacs.find(x.second) != ownmacs.end())
@@ -176,16 +180,16 @@ public:
 template<class T> class print
 {
     ostream &os;
-    long _cnt;
-    long _mac_cnt;
-    bool g_mac_cnt;
+    SAKER_INT _cnt;
+    SAKER_INT _mac_cnt;
+//    bool g_mac_cnt;
 public:
-    print(ostream &out, long pc, long mc) : os(out), _cnt(pc), _mac_cnt(mc)
+    print(ostream &out, SAKER_INT pc, SAKER_INT mc) : os(out), _cnt(pc), _mac_cnt(mc)
 	{
-        if (mc != DEFAULT_MAC_CNT)
+/*        if (mc != DEFAULT_MAC_CNT)
             g_mac_cnt = true;
         else
-            g_mac_cnt = false;
+            g_mac_cnt = false; */
     }
 
     void operator() (T x)
@@ -199,28 +203,26 @@ public:
                 return;
             }
         }
+//cerr << "((" << g_mac_cnt << ":" << _mac_cnt << ":" << (_mac_cnt==0) << "))" << endl;
 
-        if (g_mac_cnt)
-        {
-            _mac_cnt--;
-            if (_mac_cnt < 0)
-                return; // shouldn't be asserted?
-        }
+        if (g_mac_cnt && _mac_cnt==0)
+			return;
 
+		_mac_cnt--;
 
         char f[1024];
+		char f1[1024];
+		human_size(x.first, f1);
         if (g_bytemode)
 		{
-			char f1[1024];
-			human_size(x.first, f1);
-            sprintf(f, "%12s", f1);
+            sprintf(f, "%10sB", f1);
 		}
         else
 		{
-            sprintf(f, "%12d", x.first);
+            sprintf(f, "%10sPkt", f1);
 		}
 
-        os << "\t" << f << "\t" << x.second;
+        os <<  f << "  " << x.second;
 
         if (g_percent)
         {
@@ -236,6 +238,7 @@ public:
         }
 
         cout << endl;
+
     }
 };
 
@@ -253,17 +256,17 @@ public:
 };
 
 // Converts a size to a human readable format.
-void human_size(long _size, char *output)
+void human_size(SAKER_INT _size, char *output)
 {
-    static const unsigned long KB = 1024;
-    static const unsigned long MB = 1024 * KB;
-    static const unsigned long GB = 1024 * MB;
+    static const SAKER_INT KB = 1024;
+    static const SAKER_INT MB = 1024 * KB;
+    static const SAKER_INT GB = 1024 * MB;
 
-    unsigned long number = 0, reminder = 0;
-	unsigned long size = _size;
+    SAKER_INT number = 0, reminder = 0;
+	SAKER_INT size = _size;
     if (size < KB)
     {
-        sprintf(output, "%ul B", size);
+        sprintf(output, "%llu  ", size);
     }
     else
     {
@@ -272,7 +275,7 @@ void human_size(long _size, char *output)
             number = size / KB;
             reminder = (size * 100 / KB) % 100;
 
-            snprintf(output, 256, "%ld.%02lu KB", number, reminder);
+            snprintf(output, 256, "%llu.%02llu K", number, reminder);
         }
         else
         {
@@ -280,7 +283,7 @@ void human_size(long _size, char *output)
             {
                 number = size / MB;
                 reminder = (size * 100 / MB) % 100;
-                sprintf(output, "%lu.%02lu MB", number, reminder);
+                sprintf(output, "%llu.%02llu M", number, reminder);
             }
             else
             {
@@ -288,7 +291,7 @@ void human_size(long _size, char *output)
                 {
                     number = size / GB;
                     reminder = (size * 100 / GB) % 100;
-                    sprintf(output, "%lu.%02lu GB", number, reminder);
+                    sprintf(output, "%llu.%02llu G", number, reminder);
                 }
             }
         }
@@ -309,16 +312,20 @@ void report(void)
     multimap<int, string> dst_score;
 
     // count the packets-per-second
-    long delta =  time(NULL) - time_start;
-    long pps = pkt_grb / (delta ? delta : 1);
-    long bps = size_grb / (delta ? delta : 1);
+    SAKER_INT delta =  time(NULL) - time_start;
+    SAKER_INT pps = pkt_grb / (delta ? delta : 1);
+    SAKER_INT bps = size_grb / (delta ? delta : 1);
 
     char hbps[1024];
     char hbbps[1024];
     char hsize[1024];
+    char hpkt[1024];
+    char hpps[1024];
     human_size(bps, hbps);
     human_size(bps*8, hbbps);
     human_size(size_grb, hsize);
+    human_size(pkt_grb, hpkt);
+    human_size(pps, hpps);
 
     cout << endl;
     cout << "Interfaces: ";
@@ -326,43 +333,43 @@ void report(void)
         cout << dv[i].device << " ";
     cout << endl;
 
-    cout << "Total packets: " << pkt_grb << " (" << pps << " pkts/s)" << endl;
-    cout << "Total size: " << hsize << " (" << hbps << "/s, " << hbbps << "its/s)" << endl;
-
+    cout << "Total packets: " << hpkt << "Pkt (" << hpps << "Pkts/s)" << endl;
+    cout << "Total size: " << hsize << "B (" << hbps << "B/s, " << hbbps << "Bits/s)" << endl;
+//	cout << "Macs: " << mac_cnt << endl;
     if (!g_only_dst)
     {
         cout << "SRC stats:" << endl;
-        long srcv = g_bytemode ? size_grb : pkt_grb;
+        SAKER_INT srcv = g_bytemode ? size_grb : pkt_grb;
 
         // we have first to copy all stats from src, which is ordered by MAC to src_score
         // which is ordered by count, making possible printing stats ordered by count
-        transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, long>());
+        transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, SAKER_INT>());
 
         if (g_remote)
-            for_each(src_score.begin(), src_score.end(), uncount<pair<long, string> >(&srcv));
+            for_each(src_score.begin(), src_score.end(), uncount<pair<SAKER_INT, string> >(&srcv));
 
         // and now we simply print stats by count :)
         if (g_ascend)
-            for_each(src_score.begin(), src_score.end(), print<pair<long, string> >(cout, srcv, mac_cnt));
+            for_each(src_score.begin(), src_score.end(), print<pair<SAKER_INT, string> >(cout, srcv, mac_cnt));
         else
-            for_each(src_score.rbegin(), src_score.rend(), print<pair<long, string> >(cout, srcv, mac_cnt));
+            for_each(src_score.rbegin(), src_score.rend(), print<pair<SAKER_INT, string> >(cout, srcv, mac_cnt));
     }
 
     if (!g_only_src)
     {
         cout << "DST stats:" << endl;
-        long dstv = g_bytemode ? size_grb : pkt_grb;
+        SAKER_INT dstv = g_bytemode ? size_grb : pkt_grb;
 
         // same for dst
-        transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, long>());
+        transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, SAKER_INT>());
 
         if (g_remote)
-            for_each(dst_score.begin(), dst_score.end(), uncount<pair<long, string> >(&dstv));
+            for_each(dst_score.begin(), dst_score.end(), uncount<pair<SAKER_INT, string> >(&dstv));
 
         if (g_ascend)
-            for_each(dst_score.begin(), dst_score.end(), print<pair<long, string> >(cout, dstv, mac_cnt));
+            for_each(dst_score.begin(), dst_score.end(), print<pair<SAKER_INT, string> >(cout, dstv, mac_cnt));
         else
-            for_each(dst_score.rbegin(), dst_score.rend(), print<pair<long, string> >(cout, dstv, mac_cnt));
+            for_each(dst_score.rbegin(), dst_score.rend(), print<pair<SAKER_INT, string> >(cout, dstv, mac_cnt));
     }
 }
 
@@ -413,10 +420,12 @@ int main(int argc, char *argv[])
 
         case 'n':
             pkt_cnt = atoi(optarg);
+			g_pkt_cnt = true;
             break;
 
         case 'm':
             mac_cnt = atoi(optarg);
+			g_mac_cnt = true;
             break;
 
         case 't':
@@ -458,7 +467,9 @@ int main(int argc, char *argv[])
             break;
 
         case 'c':
-         {g_cont = true; pkt_cnt=-1;}
+         	g_cont = true; 
+			pkt_cnt=0; 
+			g_pkt_cnt = false; 
             break;
 
         case 'd':
@@ -663,7 +674,7 @@ int main(int argc, char *argv[])
 
     // the main loop
     time_t last_report_time = time(NULL);
-	long poll_delay = time_delay*1000;
+	SAKER_INT poll_delay = time_delay*1000;
     while (g_cont || pkt_grb < pkt_cnt)
     {
         int dispatched;

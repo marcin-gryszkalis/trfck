@@ -1,5 +1,5 @@
 /**
- * Saker, net stats for bsd
+ * Saker, local net (layer 2) stats for bsd
  * written by Jan Pustelnik, Marcin Gryszkalis
  * no license, grab the code and run.
  *
@@ -23,8 +23,8 @@
 #include <stdio.h>
 #include <netdb.h>
 #include <net/if_dl.h>
-#include <net/route.h> 
-#include <net/if_types.h> 
+#include <net/route.h>
+#include <net/if_types.h>
 #include <netinet/in.h>
 #include <netinet/if_ether.h>
 #include <arpa/inet.h>
@@ -34,6 +34,7 @@
 #include <errno.h>
 
 #define SAKER_INT unsigned long long
+
 // C++ includes
 #include <string>
 #include <iostream>
@@ -110,17 +111,16 @@ char *bpf;
 struct bpf_program bpff;
 
 // PCAP callback function, grabs the packet
-void
-h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
+void h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 {
     char buf[50];
     int  i;
-	bpf_u_int32 pkt_size = pkthdr->len;
+    bpf_u_int32 pkt_size = pkthdr->len;
 
     map<string, SAKER_INT>::iterator mit;
 
     pkt_grb++;
-	size_grb += pkt_size;
+    size_grb += pkt_size;
 
     for (i = 0; i < 6; i++)
         sprintf(buf+3*i, "%02x:", pkt[i + 6]);
@@ -129,19 +129,19 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     string s1(buf);
     mit=src.find(s1);   // find element of src having MAC equal to s1
     if (mit == src.end()) // not found, create
-	{
-		if (g_bytemode)
-        	src.insert(make_pair(s1, pkt_size));
-		else
-	       src.insert(make_pair(s1, 1));
-	}
+    {
+        if (g_bytemode)
+            src.insert(make_pair(s1, pkt_size));
+        else
+           src.insert(make_pair(s1, 1));
+    }
     else // found, increase count
-	{
-		if (g_bytemode)
-			mit->second += pkt_size;
-		else
-        	++(mit -> second);
-	}
+    {
+        if (g_bytemode)
+            mit->second += pkt_size;
+        else
+            ++(mit -> second);
+    }
 
     for (i = 0; i < 6; i++)
         sprintf(buf+3*i, "%02x:", pkt[i]);
@@ -150,27 +150,27 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     string s2(buf);
     mit=dst.find(s2);   // same for dst
     if (mit == dst.end())
-	{
-    		if (g_bytemode)
-        	dst.insert(make_pair(s2, pkt_size));
-		else
-	       dst.insert(make_pair(s2, 1));
+    {
+            if (g_bytemode)
+            dst.insert(make_pair(s2, pkt_size));
+        else
+           dst.insert(make_pair(s2, 1));
 
-	}
+    }
     else
- 	{
-		if (g_bytemode)
-			mit->second += pkt_size;
-		else
-        	++(mit -> second);
-	}
+    {
+        if (g_bytemode)
+            mit->second += pkt_size;
+        else
+            ++(mit -> second);
+    }
 
 //    if (g_debug)
 //        cout << s1 << " ->> " << s2 << endl;
 }
 
 
-// resolver part
+// resolver stuff
 
 typedef map<string, string> resolvermap;
 resolvermap resolver;
@@ -178,17 +178,17 @@ resolvermap resolver;
 static char *resolveip(char *ipstr)
 {
     struct in_addr ip;
-	inet_aton(ipstr, &ip);
+    inet_aton(ipstr, &ip);
 
     struct hostent *hp = gethostbyaddr((const char *)&ip, sizeof ip, AF_INET);
 
-	if (hp)
-	{
-		// trim hostname
-		char * p = strchr(hp->h_name, '.');
+    if (hp)
+    {
+        // trim hostname
+        char * p = strchr(hp->h_name, '.');
         if (p != NULL) *p = '\0';
-		return hp->h_name;
-	}
+        return hp->h_name;
+    }
 
     return ipstr;
 }
@@ -213,44 +213,37 @@ int prepare_arp()
 
     if(sysctl(mib, 6, NULL, &needed, NULL, 0) < 0)
     {
-        perror("route-sysctl-estimate");
+        perror("Error: route-sysctl-estimate failed");
         exit(1);
     }
 
     if((buf = (char *)malloc(needed)) == NULL)
     {
-        perror("malloc");
+        perror("Error: malloc failed");
         exit(1);
     }
 
     if(sysctl(mib, 6, buf, &needed, NULL, 0) < 0)
     {
-        perror("retrieval of routing table");
+        perror("Error: retrieval of routing table failed");
         exit(1);
     }
 
     lim = buf + needed;
 
-struct rt_msghdr *rtm = NULL;
-  	for (next = buf; next < lim; next += rtm->rtm_msglen) 
+    struct rt_msghdr *rtm = NULL;
+    for (next = buf; next < lim; next += rtm->rtm_msglen)
     {
-      rtm = (struct rt_msghdr *)next;
-      struct sockaddr_inarp *sinarp = (struct sockaddr_inarp *)(rtm + 1);
-      struct sockaddr_dl *sdl = (struct sockaddr_dl *)((char *)sinarp + ROUNDUP(sinarp->sin_len));
+        rtm = (struct rt_msghdr *)next;
+        struct sockaddr_inarp *sinarp = (struct sockaddr_inarp *)(rtm + 1);
+        struct sockaddr_dl *sdl = (struct sockaddr_dl *)((char *)sinarp + ROUNDUP(sinarp->sin_len));
 
-	
-//	if (g_debug)
-//	{
-//		printf("%p %p %p\n", rtm, sinarp, sdl);
-//	}
-
-	
         if (
-			sdl->sdl_alen 
-			&& (sdl->sdl_type == IFT_ETHER || sdl->sdl_type == IFT_L2VLAN) 
-			&& sdl->sdl_alen == ETHER_ADDR_LEN
-			)
-    	{
+            sdl->sdl_alen
+            && (sdl->sdl_type == IFT_ETHER || sdl->sdl_type == IFT_L2VLAN)
+            && sdl->sdl_alen == ETHER_ADDR_LEN
+            )
+        {
             char *thismac = ether_ntoa((struct ether_addr *)LLADDR(sdl));
 
             resolvermap::iterator hit = resolver.find(string(thismac));   // check if already in the cache
@@ -266,16 +259,13 @@ struct rt_msghdr *rtm = NULL;
                 thishost = thisip;
 
             // save to cache
-			if (g_debug)
-            	cout << "MAC: " << string(thismac) << " -> " << string(thishost) << endl;
+            if (g_debug)
+                cout << "MAC: " << string(thismac) << " -> " << string(thishost) << endl;
 
-			resolver.insert(make_pair(string(thismac), string(thishost)));
+            resolver.insert(make_pair(string(thismac), string(thishost)));
         }
 
     }
-
-	if (g_debug)
-		cout << "Finished cing" << endl;
 
     free(buf);
     return(0);
@@ -283,24 +273,24 @@ struct rt_msghdr *rtm = NULL;
 
 string resolvemac(string mac)
 {
-	resolvermap::iterator hit;
+    resolvermap::iterator hit;
 
-	if (g_debug)
-       	cout << "Resolve MAC: " << mac << endl;
+    if (g_debug)
+           cout << "Resolve MAC: " << mac << endl;
 
     string h;
-	hit = resolver.find(mac);   // find in the cache
+    hit = resolver.find(mac);   // find in the cache
     if (hit == resolver.end()) // not found, rebuild cache
     {
         prepare_arp();
         hit = resolver.find(mac);
-    
-		if (hit == resolver.end()) // still not found
+
+        if (hit == resolver.end()) // still not found
             return mac;
     }
 
-	if (g_debug)
-       	cout << "Resolve MAC (done): " << hit->first << endl;
+    if (g_debug)
+           cout << "Resolve MAC (done): " << hit->first << endl;
 
     return hit->second;
 }
@@ -331,7 +321,7 @@ template<class T> class print
 //    bool g_mac_cnt;
 public:
     print(ostream &out, SAKER_INT pc, SAKER_INT mc) : os(out), _cnt(pc), _mac_cnt(mc)
-	{
+    {
 /*        if (mc != DEFAULT_MAC_CNT)
             g_mac_cnt = true;
         else
@@ -352,21 +342,21 @@ public:
 //cerr << "((" << g_mac_cnt << ":" << _mac_cnt << ":" << (_mac_cnt==0) << "))" << endl;
 
         if (g_mac_cnt && _mac_cnt==0)
-			return;
+            return;
 
-		_mac_cnt--;
+        _mac_cnt--;
 
         char f[1024];
-		char f1[1024];
-		human_size(x.first, f1);
+        char f1[1024];
+        human_size(x.first, f1);
         if (g_bytemode)
-		{
+        {
             sprintf(f, "%10sB", f1);
-		}
+        }
         else
-		{
+        {
             sprintf(f, "%10sPkt", f1);
-		}
+        }
 
         os <<  f << " ";
 
@@ -381,15 +371,15 @@ public:
         {
             if (ownmacs.find(x.second) != ownmacs.end())
                 cout << " * ";
-			else
-				cout << "   ";
+            else
+                cout << "   ";
         }
 
 
-		if (g_resolve_arp) // resolve_ip is checked inside
-			cout << resolvemac(x.second);
-		else
-			cout << x.second;
+        if (g_resolve_arp) // resolve_ip is checked inside
+            cout << resolvemac(x.second);
+        else
+            cout << x.second;
 
         cout << endl;
 
@@ -417,7 +407,7 @@ void human_size(SAKER_INT _size, char *output)
     static const SAKER_INT GB = 1024 * MB;
 
     SAKER_INT number = 0, reminder = 0;
-	SAKER_INT size = _size;
+    SAKER_INT size = _size;
     if (size < KB)
     {
         sprintf(output, "%llu  ", size);
@@ -489,7 +479,7 @@ void report(void)
 
     cout << "Total packets: " << hpkt << "Pkt (" << hpps << "Pkts/s)" << endl;
     cout << "Total size: " << hsize << "B (" << hbps << "B/s, " << hbbps << "Bits/s)" << endl;
-//	cout << "Macs: " << mac_cnt << endl;
+//    cout << "Macs: " << mac_cnt << endl;
     if (!g_only_dst)
     {
         cout << "SRC stats:" << endl;
@@ -574,12 +564,12 @@ int main(int argc, char *argv[])
 
         case 'n':
             pkt_cnt = atoi(optarg);
-			g_pkt_cnt = true;
+            g_pkt_cnt = true;
             break;
 
         case 'm':
             mac_cnt = atoi(optarg);
-			g_mac_cnt = true;
+            g_mac_cnt = true;
             break;
 
         case 't':
@@ -630,9 +620,9 @@ int main(int argc, char *argv[])
             break;
 
         case 'c':
-         	g_cont = true;
-			pkt_cnt=0;
-			g_pkt_cnt = false;
+             g_cont = true;
+            pkt_cnt=0;
+            g_pkt_cnt = false;
             break;
 
         case 'd':
@@ -830,32 +820,32 @@ int main(int argc, char *argv[])
             exit(5);
         }
 
-		if (g_debug)
-			cerr << "pcap_selectable_fd: " << dv[i].device << "=" << dv[i].pfd.fd << endl;
+        if (g_debug)
+            cerr << "pcap_selectable_fd: " << dv[i].device << "=" << dv[i].pfd.fd << endl;
 
         dv[i].pfd.events = POLLRDNORM;
-		pollfdtab[i] = dv[i].pfd;
+        pollfdtab[i] = dv[i].pfd;
     }
 
     // the main loop
     time_t last_report_time = time(NULL);
-	SAKER_INT poll_delay = time_delay*1000;
+    SAKER_INT poll_delay = time_delay*1000;
     while (g_cont || pkt_grb < pkt_cnt)
     {
         int dispatched;
-		int pollret;
+        int pollret;
         switch (pollret = poll(pollfdtab, pcap_dev_no, poll_delay))
         {
             case -1:
                 if (errno != EINTR)
-                    perror("poll");
+                    perror("Error: poll failed");
                 break;
 
             case 0:
                 break;
 
             default:
-//				cerr << "POLL(" << pollret << ")" << endl;
+//                cerr << "POLL(" << pollret << ")" << endl;
 
                 for (i=0; i<pcap_dev_no; i++)
                 {
@@ -886,5 +876,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-

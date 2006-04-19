@@ -16,11 +16,18 @@
 #include <cstdio>
 
 #include <sys/types.h>
+#include <sys/sysctl.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <ifaddrs.h>
 #include <stdio.h>
+#include <netdb.h>
 #include <net/if_dl.h>
+#include <net/route.h> 
+#include <net/if_types.h> 
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
+#include <arpa/inet.h>
 #include <signal.h>
 #include <time.h>
 #include <poll.h>
@@ -158,40 +165,36 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
         	++(mit -> second);
 	}
 
-    if (g_debug)
-        cout << s1 << " ->> " << s2 << endl;
+//    if (g_debug)
+//        cout << s1 << " ->> " << s2 << endl;
 }
 
 
 // resolver part
 
-map<string, string> resolver;
+typedef map<string, string> resolvermap;
+resolvermap resolver;
+
+static char *resolveip(char *ipstr)
+{
+    struct in_addr ip;
+	inet_aton(ipstr, &ip);
+
+    struct hostent *hp = gethostbyaddr((const char *)&ip, sizeof ip, AF_INET);
+
+	if (hp)
+	{
+		// trim hostname
+		char * p = strchr(hp->h_name, '.');
+        if (p != NULL) *p = '\0';
+		return hp->h_name;
+	}
+
+    return ipstr;
+}
 
 #define ROUNDUP(a) \
         ((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
-
-
-char *resolvemac(char *mac)
-{
-    string m(ip);
-
-    string h = resolver.find(m);   // find in the cache
-    if (h == resolver.end()) // not found, rebuild cache
-    {
-        prepare_arp();
-        h = resolver.find(m);
-        if (h == resolver.end()) // still not found
-            return mac;
-    }
-
-    return h.c_str();
-}
-
-static char *resolveip(char *ip)
-{
-    struct hostent *hp = gethostbyaddr(ip, sizeof *ip, AF_INET);
-    return hp ? hp->h_name : ip;
-}
 
 int prepare_arp()
 {
@@ -214,7 +217,7 @@ int prepare_arp()
         exit(1);
     }
 
-    if((buf = malloc(needed)) == NULL)
+    if((buf = (char *)malloc(needed)) == NULL)
     {
         perror("malloc");
         exit(1);
@@ -227,20 +230,31 @@ int prepare_arp()
     }
 
     lim = buf + needed;
-    next = buf;
 
-    while (next < lim)
+struct rt_msghdr *rtm = NULL;
+  	for (next = buf; next < lim; next += rtm->rtm_msglen) 
     {
-        struct rt_msghdr *rtm = (struct rt_msghdr *)next;
-        struct sockaddr_inarp *sinarp = (struct sockaddr_inarp *)(rtm + 1);
-        struct sockaddr_dl *sdl = (struct sockaddr_dl *)((char *)sinarp + ROUNDUP(sinarp->sin_len));
+      rtm = (struct rt_msghdr *)next;
+      struct sockaddr_inarp *sinarp = (struct sockaddr_inarp *)(rtm + 1);
+      struct sockaddr_dl *sdl = (struct sockaddr_dl *)((char *)sinarp + ROUNDUP(sinarp->sin_len));
 
-        if(sdl->sdl_alen)
-        {
+	
+//	if (g_debug)
+//	{
+//		printf("%p %p %p\n", rtm, sinarp, sdl);
+//	}
+
+	
+        if (
+			sdl->sdl_alen 
+			&& (sdl->sdl_type == IFT_ETHER || sdl->sdl_type == IFT_L2VLAN) 
+			&& sdl->sdl_alen == ETHER_ADDR_LEN
+			)
+    	{
             char *thismac = ether_ntoa((struct ether_addr *)LLADDR(sdl));
 
-            string h = resolver.find(m);   // check if already in the cache
-            if (h != resolver.end())
+            resolvermap::iterator hit = resolver.find(string(thismac));   // check if already in the cache
+            if (hit != resolver.end())
                 continue;
 
             char *thisip = inet_ntoa(sinarp->sin_addr);
@@ -252,14 +266,43 @@ int prepare_arp()
                 thishost = thisip;
 
             // save to cache
-            resolver.insert(make_pair(string(thismac), string(thishost)));
+			if (g_debug)
+            	cout << "MAC: " << string(thismac) << " -> " << string(thishost) << endl;
+
+			resolver.insert(make_pair(string(thismac), string(thishost)));
         }
 
-        next += rtm->rtm_msglen;
     }
+
+	if (g_debug)
+		cout << "Finished cing" << endl;
 
     free(buf);
     return(0);
+}
+
+string resolvemac(string mac)
+{
+	resolvermap::iterator hit;
+
+	if (g_debug)
+       	cout << "Resolve MAC: " << mac << endl;
+
+    string h;
+	hit = resolver.find(mac);   // find in the cache
+    if (hit == resolver.end()) // not found, rebuild cache
+    {
+        prepare_arp();
+        hit = resolver.find(mac);
+    
+		if (hit == resolver.end()) // still not found
+            return mac;
+    }
+
+	if (g_debug)
+       	cout << "Resolve MAC (done): " << hit->first << endl;
+
+    return hit->second;
 }
 
 
@@ -325,20 +368,28 @@ public:
             sprintf(f, "%10sPkt", f1);
 		}
 
-        os <<  f << "  " << x.second;
+        os <<  f << " ";
 
         if (g_percent)
         {
             char s[10];
-            sprintf(s, "%4.1f", (static_cast<double>(x.first)/_cnt)*100.0);
-            cout << "\t" << s << "%";
+            sprintf(s, " %4.1f ", (static_cast<double>(x.first)/_cnt)*100.0);
+            cout << s << "%";
         }
 
         if (g_mark)
         {
             if (ownmacs.find(x.second) != ownmacs.end())
-                cout << " *";
+                cout << " * ";
+			else
+				cout << "   ";
         }
+
+
+		if (g_resolve_arp) // resolve_ip is checked inside
+			cout << resolvemac(x.second);
+		else
+			cout << x.second;
 
         cout << endl;
 

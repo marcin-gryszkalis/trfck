@@ -69,6 +69,8 @@ bool g_bpf = false;
 bool g_promisc = true; // on by dafault!
 bool g_mac_cnt = false;
 bool g_pkt_cnt = false;
+bool g_resolve_arp = false;
+bool g_resolve_ip = false;
 
 struct saker_device
 {
@@ -88,7 +90,7 @@ int    pcap_dev_no = 0;
 #define DEFAULT_DELAY (10)
 
 SAKER_INT pkt_cnt = DEFAULT_PKT_CNT;
-SAKER_INT mac_cnt = 0; 
+SAKER_INT mac_cnt = 0;
 
 int time_delay = DEFAULT_DELAY;
 
@@ -159,6 +161,107 @@ h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     if (g_debug)
         cout << s1 << " ->> " << s2 << endl;
 }
+
+
+// resolver part
+
+map<string, string> resolver;
+
+#define ROUNDUP(a) \
+        ((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
+
+
+char *resolvemac(char *mac)
+{
+    string m(ip);
+
+    string h = resolver.find(m);   // find in the cache
+    if (h == resolver.end()) // not found, rebuild cache
+    {
+        prepare_arp();
+        h = resolver.find(m);
+        if (h == resolver.end()) // still not found
+            return mac;
+    }
+
+    return h.c_str();
+}
+
+static char *resolveip(char *ip)
+{
+    struct hostent *hp = gethostbyaddr(ip, sizeof *ip, AF_INET);
+    return hp ? hp->h_name : ip;
+}
+
+int prepare_arp()
+{
+    int mib[6];
+    size_t needed;
+    char *lim, *buf, *next;
+
+    mib[0] = CTL_NET;
+    mib[1] = PF_ROUTE;
+    mib[2] = 0;
+    mib[3] = AF_INET;
+    mib[4] = NET_RT_FLAGS;
+    mib[5] = RTF_LLINFO;
+
+    /* Retrieve routing table */
+
+    if(sysctl(mib, 6, NULL, &needed, NULL, 0) < 0)
+    {
+        perror("route-sysctl-estimate");
+        exit(1);
+    }
+
+    if((buf = malloc(needed)) == NULL)
+    {
+        perror("malloc");
+        exit(1);
+    }
+
+    if(sysctl(mib, 6, buf, &needed, NULL, 0) < 0)
+    {
+        perror("retrieval of routing table");
+        exit(1);
+    }
+
+    lim = buf + needed;
+    next = buf;
+
+    while (next < lim)
+    {
+        struct rt_msghdr *rtm = (struct rt_msghdr *)next;
+        struct sockaddr_inarp *sinarp = (struct sockaddr_inarp *)(rtm + 1);
+        struct sockaddr_dl *sdl = (struct sockaddr_dl *)((char *)sinarp + ROUNDUP(sinarp->sin_len));
+
+        if(sdl->sdl_alen)
+        {
+            char *thismac = ether_ntoa((struct ether_addr *)LLADDR(sdl));
+
+            string h = resolver.find(m);   // check if already in the cache
+            if (h != resolver.end())
+                continue;
+
+            char *thisip = inet_ntoa(sinarp->sin_addr);
+
+            char *thishost = NULL;
+            if (g_resolve_ip)
+                thishost = resolveip(thisip);
+            else
+                thishost = thisip;
+
+            // save to cache
+            resolver.insert(make_pair(string(thismac), string(thishost)));
+        }
+
+        next += rtm->rtm_msglen;
+    }
+
+    free(buf);
+    return(0);
+}
+
 
 template<class T> class uncount
 {
@@ -402,7 +505,7 @@ int main(int argc, char *argv[])
         dv[i].pfd.fd = -1;
     }
 
-    while ((opt = getopt (argc, argv, "i:n:m:t:clapbhvorsdf:VD")) != -1)
+    while ((opt = getopt (argc, argv, "i:n:m:t:clapbhvorsdxXf:VD")) != -1)
     {
         switch (opt)
         {
@@ -466,10 +569,19 @@ int main(int argc, char *argv[])
             g_promisc = false;
             break;
 
+        case 'x':
+            g_resolve_arp = true;
+            break;
+
+        case 'X':
+            g_resolve_arp = true;
+            g_resolve_ip = true;
+            break;
+
         case 'c':
-         	g_cont = true; 
-			pkt_cnt=0; 
-			g_pkt_cnt = false; 
+         	g_cont = true;
+			pkt_cnt=0;
+			g_pkt_cnt = false;
             break;
 
         case 'd':
@@ -532,9 +644,11 @@ int main(int argc, char *argv[])
             << "  -l        mark local MACs with asterisk (see also -r)" << endl
             << "  -s        show only source stats" << endl
             << "  -d        show only destination stats" << endl
+            << "  -x        resolve MACs to IPs" << endl
+            << "  -X        resolve IPs to hostnames (implies -x)" << endl
             << "  -c        continuous mode" << endl
             << "  -o        turn off promiscuous mode" << endl
-            << "  -t        time delay for continuous mode in seconds (default "<< DEFAULT_DELAY << ")" << endl
+            << "  -t num    time delay for continuous mode in seconds (default "<< DEFAULT_DELAY << ")" << endl
             << "  -f 'expr' expr is a pcap-style BPF expression (man tcpdump)" << endl
             << "  -v        be verbose (e.g. output each packet)" << endl
             << "  -V        print version and exit" << endl

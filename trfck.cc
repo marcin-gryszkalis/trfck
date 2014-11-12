@@ -10,7 +10,7 @@
  *
  */
 
-char *revp = "1.43";
+char const *revp = "1.43";
  
 // system and C includes
 #include <pcap.h>
@@ -170,6 +170,51 @@ void h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
 //        cout << s1 << " ->> " << s2 << endl;
 }
 
+// Converts a size to a human readable format.
+void human_size(TRFCK_INT _size, char *output)
+{
+    static const TRFCK_INT KB = 1024;
+    static const TRFCK_INT MB = 1024 * KB;
+    static const TRFCK_INT GB = 1024 * MB;
+
+    TRFCK_INT number = 0, reminder = 0;
+    TRFCK_INT size = _size;
+    if (size < KB)
+    {
+        sprintf(output, "%llu  ", size);
+    }
+    else
+    {
+        if (size < MB)
+        {
+            number = size / KB;
+            reminder = (size * 100 / KB) % 100;
+
+            snprintf(output, 256, "%llu.%02llu K", number, reminder);
+        }
+        else
+        {
+            if (size < GB)
+            {
+                number = size / MB;
+                reminder = (size * 100 / MB) % 100;
+                sprintf(output, "%llu.%02llu M", number, reminder);
+            }
+            else
+            {
+                if (size >= GB)
+                {
+                    number = size / GB;
+                    reminder = (size * 100 / GB) % 100;
+                    sprintf(output, "%llu.%02llu G", number, reminder);
+                }
+            }
+        }
+    }
+
+// cerr << "!" << size << "!" << number << "!" << output << "!" << endl;
+//  strNumber.Replace(".00", "");
+}
 
 // resolver stuff
 
@@ -400,51 +445,6 @@ public:
     }
 };
 
-// Converts a size to a human readable format.
-void human_size(TRFCK_INT _size, char *output)
-{
-    static const TRFCK_INT KB = 1024;
-    static const TRFCK_INT MB = 1024 * KB;
-    static const TRFCK_INT GB = 1024 * MB;
-
-    TRFCK_INT number = 0, reminder = 0;
-    TRFCK_INT size = _size;
-    if (size < KB)
-    {
-        sprintf(output, "%llu  ", size);
-    }
-    else
-    {
-        if (size < MB)
-        {
-            number = size / KB;
-            reminder = (size * 100 / KB) % 100;
-
-            snprintf(output, 256, "%llu.%02llu K", number, reminder);
-        }
-        else
-        {
-            if (size < GB)
-            {
-                number = size / MB;
-                reminder = (size * 100 / MB) % 100;
-                sprintf(output, "%llu.%02llu M", number, reminder);
-            }
-            else
-            {
-                if (size >= GB)
-                {
-                    number = size / GB;
-                    reminder = (size * 100 / GB) % 100;
-                    sprintf(output, "%llu.%02llu G", number, reminder);
-                }
-            }
-        }
-    }
-
-// cerr << "!" << size << "!" << number << "!" << output << "!" << endl;
-//  strNumber.Replace(".00", "");
-}
 
 void report(void)
 {
@@ -849,7 +849,7 @@ int main(int argc, char *argv[])
                 {
                     if (pollfdtab[i].revents)
                     {
-                        if (dispatched = pcap_dispatch(dv[i].pcap, PCAP_MAX_PKT_PER_DISPATCH, h, NULL) < 0)
+                        if ((dispatched = pcap_dispatch(dv[i].pcap, PCAP_MAX_PKT_PER_DISPATCH, h, NULL)) < 0)
                         {
                             cerr << "Error: error during pcap dispatch ("
                                 << pcap_geterr(dv[i].pcap)

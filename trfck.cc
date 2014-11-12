@@ -1,14 +1,13 @@
 /**
- * Saker, local net (layer 2) stats for bsd
+ * trfck - local net (layer 2) stats for bsd
  * written by Jan Pustelnik, Marcin Gryszkalis
- * no license, grab the code and run.
+ * https://github.com/marcin-gryszkalis/trfck
  *
  * Requires FreeBSD 4.6 or later (because of poll(2) behavior on BPF devs)
  *
  * Compile with
- * $ c++ -o saker -lpcap saker.cc
+ * $ c++ -o trfck -lpcap trfck.cc
  *
- * $Id$
  */
 
 // system and C includes
@@ -80,7 +79,7 @@ bool g_pkt_cnt = false;
 bool g_resolve_arp = false;
 bool g_resolve_ip = false;
 
-struct saker_device
+struct trfck_device
 {
     char *device;
     pcap_t *pcap;
@@ -88,7 +87,7 @@ struct saker_device
 };
 
 #define MAX_IFACES (16)
-saker_device dv[MAX_IFACES];
+trfck_device dv[MAX_IFACES];
 pollfd pollfdtab[MAX_IFACES];
 int    pcap_dev_no = 0;
 
@@ -519,7 +518,7 @@ void report(void)
 
 void sig_handler(int sig)
 {
-    cerr << endl << "saker: shutdown" << endl;
+    cerr << endl << "trfck: shutdown" << endl;
     exit(127);
 }
 
@@ -534,7 +533,7 @@ int main(int argc, char *argv[])
     char rev[255] = "$Revision$";
     rev[strlen(rev)-2] = '\0';
     char *revp = rev + 11; // skip prefix
-    cerr << "saker v" << revp << endl;
+    cerr << "trfck v" << revp << endl;
 
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
@@ -673,7 +672,7 @@ int main(int argc, char *argv[])
     if (usage)
     {
         cerr << endl
-            << "Usage: saker [-apbrmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if> [-i <if2> ... ]" << endl
+            << "Usage: trfck [-apbrmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if> [-i <if2> ... ]" << endl
             << "  -i <if>   network interface (many interfaces can be specified)" << endl
             << "  -h        show this info" << endl
             << "  -n num    number of packets to capture (default " << DEFAULT_PKT_CNT << ", -1 for unlimited)" << endl

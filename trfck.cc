@@ -10,6 +10,8 @@
  *
  */
 
+char *revp = "1.43";
+ 
 // system and C includes
 #include <pcap.h>
 #include <cstdio>
@@ -530,9 +532,6 @@ int main(int argc, char *argv[])
     char            errbuff[PCAP_ERRBUF_SIZE];
     int             i;
 
-    char rev[255] = "$Revision$";
-    rev[strlen(rev)-2] = '\0';
-    char *revp = rev + 11; // skip prefix
     cerr << "trfck v" << revp << endl;
 
     signal(SIGINT, sig_handler);

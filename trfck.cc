@@ -32,7 +32,7 @@
 #include <poll.h>
 #include <errno.h>
 
-#define SAKER_INT unsigned long long
+#define TRFCK_INT unsigned long long
 
 // C++ includes
 #include <string>
@@ -46,18 +46,18 @@ using namespace std;
 
 // container that keeps pairs (MAC, count) representing src
 // addresses of packets ordered by MAC adress
-map<string, SAKER_INT> src;
+map<string, TRFCK_INT> src;
 
 // same for dst addresses
-map<string, SAKER_INT> dst;
+map<string, TRFCK_INT> dst;
 
 // container that keeps pairs (MAC, count)
 // representing src addresses of packets
 // ordered by count of packets (or count of bytes)
-multimap<SAKER_INT, string> src_score;
+multimap<TRFCK_INT, string> src_score;
 
 // same for dst addresses
-multimap<SAKER_INT, string> dst_score;
+multimap<TRFCK_INT, string> dst_score;
 
 // keeps list of own macs (for -r/-l handling)
 set<string> ownmacs;
@@ -96,13 +96,13 @@ int    pcap_dev_no = 0;
 #define DEFAULT_PKT_CNT (100)
 #define DEFAULT_DELAY (10)
 
-SAKER_INT pkt_cnt = DEFAULT_PKT_CNT;
-SAKER_INT mac_cnt = 0;
+TRFCK_INT pkt_cnt = DEFAULT_PKT_CNT;
+TRFCK_INT mac_cnt = 0;
 
 int time_delay = DEFAULT_DELAY;
 
-SAKER_INT pkt_grb = 0; // number of packets actually grabbed
-SAKER_INT size_grb = 0;
+TRFCK_INT pkt_grb = 0; // number of packets actually grabbed
+TRFCK_INT size_grb = 0;
 
 time_t time_start = 0;
 
@@ -116,7 +116,7 @@ void h(u_char * useless, const struct pcap_pkthdr * pkthdr, const u_char * pkt)
     int  i;
     bpf_u_int32 pkt_size = pkthdr->len;
 
-    map<string, SAKER_INT>::iterator mit;
+    map<string, TRFCK_INT>::iterator mit;
 
     pkt_grb++;
     size_grb += pkt_size;
@@ -297,9 +297,9 @@ string resolvemac(string mac)
 
 template<class T> class uncount
 {
-    SAKER_INT* cnt_var;
+    TRFCK_INT* cnt_var;
 public:
-    uncount(SAKER_INT* cv) : cnt_var(cv) {}
+    uncount(TRFCK_INT* cv) : cnt_var(cv) {}
     void operator() (T x)
     {
         if (ownmacs.find(x.second) != ownmacs.end())
@@ -315,11 +315,11 @@ public:
 template<class T> class print
 {
     ostream &os;
-    SAKER_INT _cnt;
-    SAKER_INT _mac_cnt;
+    TRFCK_INT _cnt;
+    TRFCK_INT _mac_cnt;
 //    bool g_mac_cnt;
 public:
-    print(ostream &out, SAKER_INT pc, SAKER_INT mc) : os(out), _cnt(pc), _mac_cnt(mc)
+    print(ostream &out, TRFCK_INT pc, TRFCK_INT mc) : os(out), _cnt(pc), _mac_cnt(mc)
     {
 /*        if (mc != DEFAULT_MAC_CNT)
             g_mac_cnt = true;
@@ -399,14 +399,14 @@ public:
 };
 
 // Converts a size to a human readable format.
-void human_size(SAKER_INT _size, char *output)
+void human_size(TRFCK_INT _size, char *output)
 {
-    static const SAKER_INT KB = 1024;
-    static const SAKER_INT MB = 1024 * KB;
-    static const SAKER_INT GB = 1024 * MB;
+    static const TRFCK_INT KB = 1024;
+    static const TRFCK_INT MB = 1024 * KB;
+    static const TRFCK_INT GB = 1024 * MB;
 
-    SAKER_INT number = 0, reminder = 0;
-    SAKER_INT size = _size;
+    TRFCK_INT number = 0, reminder = 0;
+    TRFCK_INT size = _size;
     if (size < KB)
     {
         sprintf(output, "%llu  ", size);
@@ -455,9 +455,9 @@ void report(void)
     multimap<int, string> dst_score;
 
     // count the packets-per-second
-    SAKER_INT delta =  time(NULL) - time_start;
-    SAKER_INT pps = pkt_grb / (delta ? delta : 1);
-    SAKER_INT bps = size_grb / (delta ? delta : 1);
+    TRFCK_INT delta =  time(NULL) - time_start;
+    TRFCK_INT pps = pkt_grb / (delta ? delta : 1);
+    TRFCK_INT bps = size_grb / (delta ? delta : 1);
 
     char hbps[1024];
     char hbbps[1024];
@@ -482,37 +482,37 @@ void report(void)
     if (!g_only_dst)
     {
         cout << "SRC stats:" << endl;
-        SAKER_INT srcv = g_bytemode ? size_grb : pkt_grb;
+        TRFCK_INT srcv = g_bytemode ? size_grb : pkt_grb;
 
         // we have first to copy all stats from src, which is ordered by MAC to src_score
         // which is ordered by count, making possible printing stats ordered by count
-        transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, SAKER_INT>());
+        transform(src.begin(), src.end(), inserter(src_score, src_score.begin()), revert<string, TRFCK_INT>());
 
         if (g_remote)
-            for_each(src_score.begin(), src_score.end(), uncount<pair<SAKER_INT, string> >(&srcv));
+            for_each(src_score.begin(), src_score.end(), uncount<pair<TRFCK_INT, string> >(&srcv));
 
         // and now we simply print stats by count :)
         if (g_ascend)
-            for_each(src_score.begin(), src_score.end(), print<pair<SAKER_INT, string> >(cout, srcv, mac_cnt));
+            for_each(src_score.begin(), src_score.end(), print<pair<TRFCK_INT, string> >(cout, srcv, mac_cnt));
         else
-            for_each(src_score.rbegin(), src_score.rend(), print<pair<SAKER_INT, string> >(cout, srcv, mac_cnt));
+            for_each(src_score.rbegin(), src_score.rend(), print<pair<TRFCK_INT, string> >(cout, srcv, mac_cnt));
     }
 
     if (!g_only_src)
     {
         cout << "DST stats:" << endl;
-        SAKER_INT dstv = g_bytemode ? size_grb : pkt_grb;
+        TRFCK_INT dstv = g_bytemode ? size_grb : pkt_grb;
 
         // same for dst
-        transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, SAKER_INT>());
+        transform(dst.begin(), dst.end(), inserter(dst_score, dst_score.begin()), revert<string, TRFCK_INT>());
 
         if (g_remote)
-            for_each(dst_score.begin(), dst_score.end(), uncount<pair<SAKER_INT, string> >(&dstv));
+            for_each(dst_score.begin(), dst_score.end(), uncount<pair<TRFCK_INT, string> >(&dstv));
 
         if (g_ascend)
-            for_each(dst_score.begin(), dst_score.end(), print<pair<SAKER_INT, string> >(cout, dstv, mac_cnt));
+            for_each(dst_score.begin(), dst_score.end(), print<pair<TRFCK_INT, string> >(cout, dstv, mac_cnt));
         else
-            for_each(dst_score.rbegin(), dst_score.rend(), print<pair<SAKER_INT, string> >(cout, dstv, mac_cnt));
+            for_each(dst_score.rbegin(), dst_score.rend(), print<pair<TRFCK_INT, string> >(cout, dstv, mac_cnt));
     }
 }
 
@@ -828,7 +828,7 @@ int main(int argc, char *argv[])
 
     // the main loop
     time_t last_report_time = time(NULL);
-    SAKER_INT poll_delay = time_delay*1000;
+    TRFCK_INT poll_delay = time_delay*1000;
     while (g_cont || pkt_grb < pkt_cnt)
     {
         int dispatched;

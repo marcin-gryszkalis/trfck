@@ -3,6 +3,7 @@ trfck
 
 Traffic check for FreeBSD.
 
+## Usage
 ```
 Usage: trfck [-apbrmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <if> [-i <if2> ... ]
   -i <if>   network interface (many interfaces can be specified)
@@ -27,6 +28,7 @@ Usage: trfck [-apbrmvhVD] [-n num] [-m num] [-s|-d] [-c -t num] [-f 'expr'] -i <
   -D        enable debug output (you are not supposed to understand it)
 ```
 
+## Examples
 ```
 # trfck -i lan0 -p -b -r -x -c -t 1 -m 5  
 Interfaces: lan0
@@ -47,7 +49,7 @@ DST stats:
 ```
 
 ```
- # trfck -i dmz0  -l -c -t 1 -m 5 
+ # trfck -i dmz0  -l -c -t 1 -m 5
 Interfaces: dmz0
 Total packets: 4.09 KPkt (524  Pkts/s)
 Total size: 4.19 MB (536.86 KB/s, 4.19 MBits/s)

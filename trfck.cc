@@ -409,8 +409,8 @@ public:
         if (g_percent)
         {
             char s[10];
-            sprintf(s, " %4.1f ", (static_cast<double>(x.first)/_cnt)*100.0);
-            cout << s << "%";
+            sprintf(s, " %4.0f%% ", (static_cast<double>(x.first)/_cnt)*100.0);
+            cout << s;
         }
 
         if (g_mark)

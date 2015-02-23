@@ -11,7 +11,7 @@
  */
 
 char const *revp = "1.43";
- 
+
 // system and C includes
 #include <pcap.h>
 #include <cstdio>
@@ -689,7 +689,7 @@ int main(int argc, char *argv[])
             << "  -o        turn off promiscuous mode" << endl
             << "  -t num    time delay for continuous mode in seconds (default "<< DEFAULT_DELAY << ")" << endl
             << "  -f 'expr' expr is a pcap-style BPF expression (man tcpdump)" << endl
-            << "  -v        be verbose (e.g. output each packet)" << endl
+            << "  -v        be verbose (output each packet)" << endl
             << "  -V        print version and exit" << endl
             << "  -D        enable debug output (you are not supposed to understand it)" << endl;
         exit(1);
